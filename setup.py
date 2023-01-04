@@ -3,10 +3,16 @@
 from distutils.core import setup
 
 setup(
-    name="mlproject",
+    name="capit",
     version="1.0",
-    description="A minimal, stateless, machine learning research template for PyTorch",
+    description="CAP-IT - Collection Aware Personalitation on Image Text Modalities",
     author="Antreas Antoniou",
     author_email="iam@antreas.io",
-    packages=["mlproject"],
+    packages=[
+        "capit",
+        "capit.core",
+        "capit.core.data",
+        "capit.core.models",
+        "capit.core.utils",
+    ],
 )
