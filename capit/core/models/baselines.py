@@ -145,8 +145,6 @@ class CLIPImageTextModel(nn.Module):
         image_hidden_token = clip_output.image_embeds
         text_hidden_token = clip_output.text_embeds
 
-        print(image_hidden_token.shape, text_hidden_token.shape)
-
         similarity = (
             torch.matmul(text_hidden_token, image_hidden_token.t())
             * self.model.logit_scale

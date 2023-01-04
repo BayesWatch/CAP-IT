@@ -145,7 +145,7 @@ learner_config = learner_config(
     resume=RESUME,
     evaluate_every_n_steps=2500,
     checkpoint_after_validation=True,
-    checkpoint_every_n_steps=500,
+    checkpoint_every_n_steps=5000,
     train_iters=1000000,
 )
 
