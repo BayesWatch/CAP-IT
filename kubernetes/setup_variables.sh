@@ -1,23 +1,25 @@
 #!/bin/bash
-export WANDB_API_KEY="my-api-key"
-export WANDB_ENTITY=my-team-name
-export WANDB_PROJECT=minimal-ml-template-debug
+export WANDB_API_KEY="myapikey"
+export WANDB_ENTITY="myentity"
+export WANDB_PROJECT="myproject"
 
-export HF_USERNAME=my-hf-username
-export HF_TOKEN=my-hf-token
+export HF_USERNAME="myusername"
+export HF_TOKEN="mytoken"
 
-export EXPERIMENTS_DIR=/volume/experiments
-export EXPERIMENT_DIR=/volume/experiments
+export TOKENIZERS_PARALLELISM=false
 
-export DATASET_DIR=/volume/datasets
-export MODEL_DIR=/volume/models
+export EXPERIMENTS_DIR=/run/experiments
+export EXPERIMENT_DIR=/run/experiments
+
+export DATASET_DIR=/data/
+export MODEL_DIR=/run/models
 
 export CLUSTER_NAME=spot-gpu-cluster-1
 export CLUSTER_ZONE=us-central1-a
 export CLUSTER_PROJECT=tali-multi-modal
 
-export EXPERIMENT_NAME_PREFIX="minimal-ml-template-debug-0"
-export DOCKER_IMAGE_PATH="ghcr.io/bayeswatch/minimal-ml-template:latest"
+export EXPERIMENT_NAME_PREFIX="capit-v2-debug"
+export DOCKER_IMAGE_PATH="ghcr.io/bayeswatch/capit:latest"
 
 mkdir -p "$HOME/.huggingface"
 touch "$HOME/.huggingface/token"
