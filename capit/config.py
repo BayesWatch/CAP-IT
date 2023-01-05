@@ -203,7 +203,7 @@ class BaseConfig:
     current_experiment_dir: str = "${root_experiment_dir}/${exp_name}"
     repo_path: str = "${hf_username}/${exp_name}"
     hf_repo_dir: str = "${current_experiment_dir}/repo"
-    code_dir: str = "${hydra:runtime.cwd}"
+    code_dir: str = "/app/"
 
 
 # Using hydra might look a bit more verbose but it saves having to manually define
