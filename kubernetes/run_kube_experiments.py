@@ -7,21 +7,56 @@ from rich import print
 import datetime
 
 
-def get_scripts(exp_name: str, batch_sizes: List[int]):
+def get_scripts(
+    exp_name: str,
+    model_name_list: List[int],
+    pretrained_list: List[bool],
+    backbone_fine_tunable_list: List[bool],
+    optimizer_lr_list: List[float],
+    optimizer_weight_decay_list: List[float],
+):
 
-    script_list = []
-    for batch_size in batch_sizes:
-        current_script_text = f"/opt/conda/envs/main/bin/accelerate-launch --mixed_precision=bf16 /app/capit/run.py exp_name={exp_name} dataset.max_num_query_images_per_episode=50"
-        script_list.append(current_script_text)
+    script_list = set()
+    for model_name in model_name_list:
+        for pretrained in pretrained_list:
+            for backbone_fine_tunable in backbone_fine_tunable_list:
+                for optimizer_lr in optimizer_lr_list:
+                    for optimizer_weight_decay in optimizer_weight_decay_list:
+                        if model_name == "clip-baseline":
+                            current_script_text = f"/opt/conda/envs/main/bin/accelerate-launch \
+                                                    --mixed_precision=bf16 --gradient_accumulation_steps=5 \
+                                                    /app/capit/run.py exp_name={exp_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay} \
+                                                    model={model_name} \
+                                                    model.pretrained={pretrained} \
+                                                    optimizer.lr={optimizer_lr} \
+                                                    optimizer.weight_decay={optimizer_weight_decay} \
+                                                    dataset.max_num_query_images_per_episode=50"
+                        elif model_name == "clip-with-post-processing-baseline":
+                            current_script_text = f"/opt/conda/envs/main/bin/accelerate-launch \
+                                                    --mixed_precision=bf16 --gradient_accumulation_steps=5 \
+                                                    /app/capit/run.py exp_name={exp_name}-{pretrained}-{backbone_fine_tunable}-{optimizer_lr}-{optimizer_weight_decay} \
+                                                    model={model_name} \
+                                                    model.pretrained={pretrained} \
+                                                    model.backbone_fine_tunable={backbone_fine_tunable} \
+                                                    optimizer.lr={optimizer_lr} \
+                                                    optimizer.weight_decay={optimizer_weight_decay} \
+                                                    dataset.max_num_query_images_per_episode=50"
 
-    return script_list
+                        script_list.add(current_script_text)
+
+    return list(script_list)
 
 
 if __name__ == "__main__":
     from bwatchcompute.kubernetes import Job, ExperimentTemplate
 
     script_list = get_scripts(
-        exp_name=os.getenv("EXPERIMENT_NAME_PREFIX"), batch_sizes=[75]
+        exp_name=os.getenv("EXPERIMENT_NAME_PREFIX"),
+        model_name_list=["clip-baseline", "clip-with-post-processing-baseline"],
+        pretrained_list=[True, False],
+        backbone_fine_tunable_list=[True, False],
+        optimizer_lr_list=[2e-5, 2e-4],
+        optimizer_weight_decay_list=[0, 1e-5],
     )
     # write a one liner that picks up date and time and converts them into a number
     datetime_seed = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
