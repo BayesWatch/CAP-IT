@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-instait
+spec:
+  storageClassName: pv-datasets
+  capacity:
+    storage: 1500Gi
+  accessModes:
+    - ReadOnlyMany
+  claimRef:
+    namespace: default
+    name: pvc-instait
+  csi:
+    driver: pd.csi.storage.gke.io
+    volumeHandle: projects/tali-multi-modal/zones/us-central1-a/disks/instait-fast-ssd-kube
+    fsType: ext4
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: default
+  name: pvc-instait
+spec:
+  storageClassName: pv-datasets
+  volumeName: pv-instait
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 1500Gi

@@ -1,0 +1,30 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: train-models-job
+spec:
+  template:
+    spec:
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 80Gi
+        - name: pvc-instait-vol
+          persistentVolumeClaim:
+            claimName: pvc-instait-disk
+      containers:
+        - name: train-container
+          image: xaviervasques/kubernetes-models:latest
+          command: []
+          imagePullPolicy: Always
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+            - mountPath: /volume/dataset
+              name: pvc-instait-vol
+      restartPolicy: Never
+  backoffLimit: 4

@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: PV_NAME
+spec:
+  storageClassName: "STORAGE_CLASS_NAME"
+  capacity:
+    storage: DISK_SIZE
+  accessModes:
+    - ReadWriteOnce
+  claimRef:
+    namespace: default
+    name: PV_CLAIM_NAME
+  csi:
+    driver: pd.csi.storage.gke.io
+    volumeHandle: DISK_ID
+    fsType: FS_TYPE
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: default
+  name: PV_CLAIM_NAME
+spec:
+  storageClassName: "STORAGE_CLASS_NAME"
+  volumeName: PV_NAME
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: DISK_SIZE
