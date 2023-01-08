@@ -103,6 +103,7 @@ class ClassificationEvaluator(Evaluator):
         for key, value in self.epoch_metrics.items():
             epoch_metrics[f"{key}-epoch-mean"] = torch.stack(value).mean()
             epoch_metrics[f"{key}-epoch-std"] = torch.stack(value).std()
+            logger.info(f"Validation {key}: {epoch_metrics} {len(value)}")
 
         return EvaluatorOutput(
             step_idx=step_idx, phase_name="validation", metrics=epoch_metrics

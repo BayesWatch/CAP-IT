@@ -25,12 +25,31 @@ def get_scripts(
 
                         if model_name == "clip-baseline":
                             name = f"{exp_name}-{model_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay}"
-                            current_script_text = f"/opt/conda/envs/main/bin/accelerate-launch --mixed_precision=bf16 --gradient_accumulation_steps=25 /app/capit/run.py exp_name={name} model={model_name} model.pretrained={pretrained} optimizer.lr={optimizer_lr} optimizer.weight_decay={optimizer_weight_decay} dataset.max_num_query_images_per_episode=50"
+                            current_script_text = f"/opt/conda/envs/main/bin/accelerate-launch \
+                                                    --mixed_precision=bf16 \
+                                                    --gradient_accumulation_steps=25 \
+                                                    /app/capit/run.py exp_name={name} \
+                                                    model={model_name} \
+                                                    model.pretrained={pretrained} \
+                                                    optimizer.lr={optimizer_lr} \
+                                                    optimizer.weight_decay={optimizer_weight_decay} \
+                                                    dataset.max_num_query_images_per_episode=50 \
+                                                    dataset.top_k_percent=100"
 
                         elif model_name == "clip-with-post-processing-baseline":
                             name = f"{exp_name}-{model_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay}-{backbone_fine_tunable}"
-
-                            current_script_text = f"/opt/conda/envs/main/bin/accelerate-launch --mixed_precision=bf16 --gradient_accumulation_steps=25 /app/capit/run.py exp_name={name} model={model_name} model.pretrained={pretrained} optimizer.lr={optimizer_lr} optimizer.weight_decay={optimizer_weight_decay} model.backbone_fine_tunable={backbone_fine_tunable} dataset.max_num_query_images_per_episode=50"
+                            current_script_text = f"/opt/conda/envs/main/bin/accelerate-launch \
+                                                    --mixed_precision=bf16 \
+                                                    --gradient_accumulation_steps=25 \
+                                                    /app/capit/run.py \
+                                                    exp_name={name} \
+                                                    model={model_name} \
+                                                    model.pretrained={pretrained} \
+                                                    optimizer.lr={optimizer_lr} \
+                                                    optimizer.weight_decay={optimizer_weight_decay} \
+                                                    model.backbone_fine_tunable={backbone_fine_tunable} \
+                                                    dataset.max_num_query_images_per_episode=50 \
+                                                    dataset.top_k_percent=100"
 
                         script_list.add(current_script_text)
 

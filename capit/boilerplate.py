@@ -84,7 +84,7 @@ class Learner(nn.Module):
             if isinstance(test_dataloaders, DataLoader)
             else test_dataloaders
         )
-        
+
         for name, params in self.model.named_parameters():
             logger.info(f"{name}, {params.shape}")
 
