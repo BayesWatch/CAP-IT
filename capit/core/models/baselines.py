@@ -51,9 +51,11 @@ class CLIPImageTextModel(nn.Module):
             self.processor.feature_extractor.size,
             self.processor.feature_extractor.size,
         ]
-        self.is_build = False
+        self.is_built = False
 
     def build(self, batch: ImageTextRetrievalInput):
+        log.info(f"Building {self.__class__.__name__} post processing module")
+
         image = batch.target_image[0]
         challenge_images = batch.challenge_images[0]
         image = torch.cat([image.unsqueeze(0), challenge_images], dim=0)
@@ -76,6 +78,10 @@ class CLIPImageTextModel(nn.Module):
         text_hidden_token = clip_output.text_model_output.hidden_states[-1]
 
         self.is_built = True
+        log.info(
+            f"Built {self.__class__.__name__} post processing module, \
+                image output: {image_hidden_token.shape}, text output: {text_hidden_token.shape}"
+        )
 
         return self.step(batch, batch_idx=0)
 
@@ -212,7 +218,7 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
             self.processor.feature_extractor.size,
             self.processor.feature_extractor.size,
         ]
-        self.is_build = False
+        self.is_built = False
         self.post_processing_module = nn.ModuleDict()
 
     def parameters(self):
@@ -253,7 +259,7 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
         return x
 
     def build(self, batch: ImageTextRetrievalInput):
-        log.info(f"Built model {self.__class__.__name__}")
+        log.info(f"Building model {self.__class__.__name__}")
         image = batch.target_image[0]
         challenge_images = batch.challenge_images[0]
         image = torch.cat([image.unsqueeze(0), challenge_images], dim=0)
@@ -282,8 +288,11 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
             name="text", x=text_hidden_token
         )
         self.is_built = True
-
-        return self.step(batch, batch_idx=0)
+        log.info(
+            f"Built {self.__class__.__name__} post processing module, \
+                image output: {image_output.shape}, text output: {text_output.shape}"
+        )
+        return self.step(batch)
 
     def preprocess_image(self, image: torch.Tensor):
         image = image.cpu()
@@ -335,8 +344,8 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
         text: List[str],
     ) -> CLIPOutput:
 
-        image = self.preprocess_image(image[0])
-        text = self.preprocess_text(text[0])
+        image = self.preprocess_image(image)
+        text = self.preprocess_text(text)
 
         if len(text.shape) == 1:
             text = text.unsqueeze(0)

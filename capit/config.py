@@ -27,9 +27,6 @@ from omegaconf import OmegaConf
 from timm.scheduler import CosineLRScheduler
 from torch.utils.data import DataLoader
 
-from .core.data import build_dataset
-from .core.models import build_model
-
 CHECKPOINT_DIR = "${hf_repo_dir}"
 HF_USERNAME = "${hf_username}"
 CODE_DIR = "${code_dir}"
@@ -178,7 +175,6 @@ class BaseConfig:
 
     seed: int = 42
 
-    freeze_backbone: bool = False
     resume: bool = False
     resume_from_checkpoint: Optional[int] = None
     print_config: bool = False

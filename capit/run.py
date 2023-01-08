@@ -192,8 +192,6 @@ def upload_code_to_wandb(code_dir: Union[pathlib.Path, str]):
 
 @hydra.main(config_path=None, config_name="config", version_base=None)
 def run(cfg: BaseConfig) -> None:
-    from torchvision.transforms import Compose, RandomCrop, Resize, ToTensor
-
     print(pretty_config(cfg, resolve=True))
 
     set_seed(seed=cfg.seed)
