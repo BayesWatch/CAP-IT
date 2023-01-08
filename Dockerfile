@@ -7,7 +7,8 @@ RUN echo y | pip install itables torchtyping orjson tensorflow tensorflow-datase
 RUN echo y | pip install git+https://github.com/BayesWatch/bwatchcompute.git
 
 RUN rm -rf /app
-ADD . /app
+ADD capit/ /app/capit/
+ADD setup.py /app/
 RUN ls /app/
 RUN echo y | pip install /app/
 

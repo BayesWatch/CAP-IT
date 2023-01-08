@@ -238,6 +238,9 @@ def run(cfg: BaseConfig) -> None:
         shuffle=False,
     )
 
+    if hasattr(model, "is_built") and model.is_built == False:
+        model.build(next(iter(train_dataloader)))
+
     wandb_args = {
         key: value for key, value in cfg.wandb_args.items() if key != "_target_"
     }
@@ -249,9 +252,7 @@ def run(cfg: BaseConfig) -> None:
 
     upload_code_to_wandb(cfg.code_dir)  # log code to wandb
 
-    params = (
-        model.classifier.parameters() if cfg.freeze_backbone else model.parameters()
-    )
+    params = model.parameters()
 
     optimizer: torch.optim.Optimizer = instantiate(
         cfg.optimizer, params=params, _partial_=False

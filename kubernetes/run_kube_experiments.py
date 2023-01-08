@@ -22,11 +22,15 @@ def get_scripts(
             for backbone_fine_tunable in backbone_fine_tunable_list:
                 for optimizer_lr in optimizer_lr_list:
                     for optimizer_weight_decay in optimizer_weight_decay_list:
+
                         if model_name == "clip-baseline":
-                            current_script_text = f"/opt/conda/envs/main/bin/accelerate-launch --mixed_precision=bf16 --gradient_accumulation_steps=25 /app/capit/run.py exp_name={exp_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay} model={model_name} model.pretrained={pretrained} optimizer.lr={optimizer_lr} optimizer.weight_decay={optimizer_weight_decay} dataset.max_num_query_images_per_episode=50"
+                            name = f"{exp_name}-{model_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay}"
+                            current_script_text = f"/opt/conda/envs/main/bin/accelerate-launch --mixed_precision=bf16 --gradient_accumulation_steps=25 /app/capit/run.py exp_name={name} model={model_name} model.pretrained={pretrained} optimizer.lr={optimizer_lr} optimizer.weight_decay={optimizer_weight_decay} dataset.max_num_query_images_per_episode=50"
 
                         elif model_name == "clip-with-post-processing-baseline":
-                            current_script_text = f"/opt/conda/envs/main/bin/accelerate-launch --mixed_precision=bf16 --gradient_accumulation_steps=25 /app/capit/run.py exp_name={exp_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay} model={model_name} model.pretrained={pretrained} optimizer.lr={optimizer_lr} optimizer.weight_decay={optimizer_weight_decay} model.backbone_fine_tunable={backbone_fine_tunable} dataset.max_num_query_images_per_episode=50"
+                            name = f"{exp_name}-{model_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay}-{backbone_fine_tunable}"
+
+                            current_script_text = f"/opt/conda/envs/main/bin/accelerate-launch --mixed_precision=bf16 --gradient_accumulation_steps=25 /app/capit/run.py exp_name={name} model={model_name} model.pretrained={pretrained} optimizer.lr={optimizer_lr} optimizer.weight_decay={optimizer_weight_decay} model.backbone_fine_tunable={backbone_fine_tunable} dataset.max_num_query_images_per_episode=50"
 
                         script_list.add(current_script_text)
 
@@ -42,7 +46,7 @@ if __name__ == "__main__":
         pretrained_list=[True, False],
         backbone_fine_tunable_list=[True, False],
         optimizer_lr_list=[2e-5, 2e-4],
-        optimizer_weight_decay_list=[0, 1e-5],
+        optimizer_weight_decay_list=[0.0, 1e-5],
     )
     # write a one liner that picks up date and time and converts them into a number
     datetime_seed = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -66,7 +70,7 @@ if __name__ == "__main__":
         },
         num_repeat_experiment=3,
         experiment_template=ExperimentTemplate.standard,
-        persistent_disk_claim_names_to_mount_dict={"pvc-instait": "/data/"},
+        persistent_disk_claim_names_to_mount_dict={"pvc-instait3": "/data/"},
     )
 
     exp.generate_spec_files()
