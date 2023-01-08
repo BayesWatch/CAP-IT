@@ -54,14 +54,14 @@ class CLIPImageTextModel(nn.Module):
         self.is_built = False
 
     def build(self, batch: ImageTextRetrievalInput):
-        log.info(f"Building {self.__class__.__name__} post processing module")
+        log.info(f"Building {self.__class__.__name__} module")
 
         image = batch.target_image[0]
         challenge_images = batch.challenge_images[0]
         image = torch.cat([image.unsqueeze(0), challenge_images], dim=0)
         text = batch.target_text[0]
 
-        image = self.preprocess_image(image.unbind(0))
+        image = self.preprocess_image(image)
         text = self.preprocess_text(text)
 
         if len(text.shape) == 1:
@@ -79,11 +79,11 @@ class CLIPImageTextModel(nn.Module):
 
         self.is_built = True
         log.info(
-            f"Built {self.__class__.__name__} post processing module, \
+            f"Built {self.__class__.__name__} \
                 image output: {image_hidden_token.shape}, text output: {text_hidden_token.shape}"
         )
 
-        return self.step(batch, batch_idx=0)
+        return self.step(batch)
 
     def preprocess_image(
         self, image: TensorType["batch_size", "channel", "height", "width"]
@@ -289,7 +289,7 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
         )
         self.is_built = True
         log.info(
-            f"Built {self.__class__.__name__} post processing module, \
+            f"Built {self.__class__.__name__}, \
                 image output: {image_output.shape}, text output: {text_output.shape}"
         )
         return self.step(batch)

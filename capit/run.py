@@ -209,13 +209,13 @@ def run(cfg: BaseConfig) -> None:
     val_dataset: Dataset = instantiate(
         cfg.dataset,
         set_name=SplitType.VAL,
-        num_episodes=1000,
+        num_episodes=2500,
         image_transforms=image_transforms,
     )
     test_dataset: Dataset = instantiate(
         cfg.dataset,
         set_name=SplitType.TEST,
-        num_episodes=1000,
+        num_episodes=10000,
         image_transforms=image_transforms,
     )
 

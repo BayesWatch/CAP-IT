@@ -27,6 +27,8 @@ from omegaconf import OmegaConf
 from timm.scheduler import CosineLRScheduler
 from torch.utils.data import DataLoader
 
+## Generic shortcut variables to useful hydra variables ###########################
+
 CHECKPOINT_DIR = "${hf_repo_dir}"
 HF_USERNAME = "${hf_username}"
 CODE_DIR = "${code_dir}"
@@ -41,16 +43,7 @@ EXP_NAME = "${exp_name}"
 SEED = "${seed}"
 RESUME = "${resume}"
 
-
-@hydrated_dataclass(target=DataLoader)
-class DataLoaderConfig:
-    dataset: Any = None
-    batch_size: int = TRAIN_BATCH_SIZE
-    persistent_workers: bool = False
-    pin_memory: bool = True
-    prefetch_factor: int = 2
-    num_workers: int = multiprocessing.cpu_count()
-    shuffle: bool = True
+## Datasets and DataLoaders ######################################################
 
 
 @dataclass
@@ -60,23 +53,19 @@ class DatasetDirectoryConfig:
     test: Optional[str] = None
 
 
-@dataclass
-class DatasetConfig:
-    _target_: Any = None
-    dataset_dir_config: DatasetDirectoryConfig = DatasetDirectoryConfig()
-    set_name: str = "dummy"
-    num_samples: int = 100
-    using_pre_sampled_split: bool = False
-    dataset_size_identifier: str = "base"
-    dataset_name: str = "base"
-    modality_config: ModalityConfig = ModalityConfig()
-    rescan_paths: bool = False
-    num_video_frames_per_datapoint: int = 10
-    num_audio_frames_per_datapoint: int = 88200
-    num_audio_sample_rate: int = 44100
-    image_shape: ImageShape = ImageShape(channels=3, width=224, height=224)
-    text_context_length: int = 77
+dataset_config = InstagramImageTextMultiModalDatasePyArrow.build_config(
+    populate_full_signature=True
+)
 
+dataloader_config = builds(
+    DataLoader,
+    dataset=None,
+    collate_fn=dataclass_collate,
+    populate_full_signature=True,
+)
+
+
+## Experiment tracking and weight upload and download callback configs ############
 
 wandb_args_config = builds(wandb.init, populate_full_signature=True)
 
@@ -100,6 +89,9 @@ HFModelUploadConfig = builds(
 
 hf_upload = HFModelUploadConfig(repo_name=EXPERIMENT_NAME, repo_owner=HF_USERNAME)
 
+default_callbacks = dict(hf_uploader=hf_upload)
+
+## Optimization configs ########################################################
 adamw_optimizer_config = builds(
     torch.optim.AdamW,
     populate_full_signature=True,
@@ -117,22 +109,14 @@ accelerator_config = builds(Accelerator, populate_full_signature=True)
 
 cosine_learning_rate_scheduler_config = cosine_learning_rate_scheduler_config()
 
+## Model configs ################################################################
+
 baseline_model_config = CLIPImageTextModel.build_config(populate_full_signature=True)
 fine_tuning_model_config = CLIPWithPostProcessingImageTextModel.build_config(
     populate_full_signature=True
 )
 
-dataset_config = InstagramImageTextMultiModalDatasePyArrow.build_config(
-    populate_full_signature=True
-)
-
-dataloader_config = builds(
-    DataLoader,
-    dataset=None,
-    collate_fn=dataclass_collate,
-    populate_full_signature=True,
-)
-
+## Trainer/Learner configs ######################################################
 learner_config = builds(Learner, populate_full_signature=True)
 
 learner_config = learner_config(
@@ -146,9 +130,7 @@ learner_config = learner_config(
     train_iters=1000000,
 )
 
-default_callbacks = dict(hf_uploader=hf_upload)
-
-
+## Top Level config as visible from Hydra-Zen commandline ########################
 @dataclass
 class BaseConfig:
 
@@ -204,10 +186,8 @@ class BaseConfig:
 
 # Using hydra might look a bit more verbose but it saves having to manually define
 # future args, and makes it a lot easier to add whatever we need from the command line
-
-
 def collect_config_store():
-
+    ## Adding named config sets to make it easier to call from command line ########
     config_store = ConfigStore.instance()
     ###################################################################################
     baseline_config = baseline_model_config(
@@ -343,7 +323,7 @@ def collect_config_store():
             else ZenField(name=value.name, hint=value.type)
         )
         zen_config.append(item)
-
+    ## Set up defaults for MISSING type config values
     config = make_config(
         *zen_config,
         hydra_defaults=[

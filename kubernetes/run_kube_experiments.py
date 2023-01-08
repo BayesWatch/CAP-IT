@@ -68,7 +68,7 @@ if __name__ == "__main__":
             "PROJECT_DIR": os.getenv("PROJECT_DIR"),
             "TOKENIZERS_PARALLELISM": os.getenv("TOKENIZERS_PARALLELISM"),
         },
-        num_repeat_experiment=3,
+        num_repeat_experiment=10,
         experiment_template=ExperimentTemplate.standard,
         persistent_disk_claim_names_to_mount_dict={"pvc-instait3": "/data/"},
     )
