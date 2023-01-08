@@ -1,10 +1,10 @@
 #!/bin/bash
-export WANDB_API_KEY="myapikey"
-export WANDB_ENTITY="myentity"
-export WANDB_PROJECT="myproject"
+export WANDB_API_KEY="03f97dc1ae484a463ef95ba2e03fb12f7eeddd85"
+export WANDB_ENTITY=machinelearningbrewery
+export WANDB_PROJECT=capit-v2-debug
 
-export HF_USERNAME="myusername"
-export HF_TOKEN="mytoken"
+export HF_USERNAME="evolvingfungus"
+export HF_TOKEN=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
 
 export TOKENIZERS_PARALLELISM=false
 
