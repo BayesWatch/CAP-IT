@@ -214,19 +214,19 @@ def run(cfg: BaseConfig) -> None:
     train_dataset: Dataset = instantiate(
         cfg.dataset,
         set_name=SplitType.TRAIN,
-        num_episodes=100000,
+        num_episodes=cfg.total_train_steps,
         image_transforms=image_transforms,
     )
     val_dataset: Dataset = instantiate(
         cfg.dataset,
         set_name=SplitType.VAL,
-        num_episodes=2000,
+        num_episodes=cfg.total_val_steps,
         image_transforms=image_transforms,
     )
     test_dataset: Dataset = instantiate(
         cfg.dataset,
         set_name=SplitType.TEST,
-        num_episodes=10000,
+        num_episodes=cfg.total_test_steps,
         image_transforms=image_transforms,
     )
 

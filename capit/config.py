@@ -21,6 +21,7 @@ from capit.core.models.baselines import (
     CLIPImageTextModel,
     CLIPWithPostProcessingImageTextModel,
 )
+from capit.core.models.cap import CAPCLIPImageTextModel
 from .boilerplate import Learner
 from .callbacks import UploadCheckpointsToHuggingFace
 from omegaconf import OmegaConf
@@ -42,6 +43,7 @@ REPO_PATH = "${repo_path}"
 EXP_NAME = "${exp_name}"
 SEED = "${seed}"
 RESUME = "${resume}"
+TOTAL_TRAIN_STEPS = "${total_train_steps}"
 
 ## Datasets and DataLoaders ######################################################
 
@@ -115,6 +117,7 @@ baseline_model_config = CLIPImageTextModel.build_config(populate_full_signature=
 fine_tuning_model_config = CLIPWithPostProcessingImageTextModel.build_config(
     populate_full_signature=True
 )
+cap_model_config = CAPCLIPImageTextModel.build_config(populate_full_signature=True)
 
 ## Trainer/Learner configs ######################################################
 learner_config = builds(Learner, populate_full_signature=True)
@@ -124,10 +127,10 @@ learner_config = learner_config(
     experiment_name=EXPERIMENT_NAME,
     experiment_dir=CHECKPOINT_DIR,
     resume=RESUME,
-    evaluate_every_n_steps=2500,
+    evaluate_every_n_steps=5000,
     checkpoint_after_validation=True,
     checkpoint_every_n_steps=5000,
-    train_iters=1000000,
+    train_iters=TOTAL_TRAIN_STEPS,
 )
 
 ## Top Level config as visible from Hydra-Zen commandline ########################
@@ -156,12 +159,14 @@ class BaseConfig:
     )
 
     seed: int = 42
-
-    resume: bool = False
+    resume: bool = True
     resume_from_checkpoint: Optional[int] = None
     print_config: bool = False
     train_batch_size: int = 1
     eval_batch_size: int = 1
+    total_train_steps: int = 25000
+    total_val_steps: int = 3000
+    total_test_steps: int = 4500
     num_workers: int = multiprocessing.cpu_count()
     train: bool = True
     test: bool = False
@@ -201,6 +206,12 @@ def collect_config_store():
         backbone_fine_tunable=False,
     )
 
+    cap_config = cap_model_config(
+        model_name_or_path="openai/clip-vit-large-patch14",
+        pretrained=True,
+        backbone_fine_tunable=False,
+    )
+
     instait_config = dataset_config(
         dataset_dir=DATASET_DIR,
         set_name=SplitType.TRAIN,
@@ -225,6 +236,8 @@ def collect_config_store():
         name="clip-with-post-processing-baseline",
         node=baseline_with_post_processing_config,
     )
+
+    config_store.store(group="model", name="cap", node=cap_config)
 
     config_store.store(
         group="dataset",

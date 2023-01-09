@@ -22,24 +22,38 @@ def get_scripts(
             for backbone_fine_tunable in backbone_fine_tunable_list:
                 for optimizer_lr in optimizer_lr_list:
                     for optimizer_weight_decay in optimizer_weight_decay_list:
-
-                        if model_name == "clip-baseline":
-                            name = f"{exp_name}-{model_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay}"
-                            current_script_text = (
-                                "/opt/conda/envs/main/bin/accelerate-launch "
-                                "--mixed_precision=bf16 "
-                                "--gradient_accumulation_steps=25 "
-                                "/app/capit/run.py "
-                                f"exp_name={name} "
-                                f"model={model_name} "
-                                f"model.pretrained={pretrained} "
-                                f"optimizer.lr={optimizer_lr} "
-                                f"optimizer.weight_decay={optimizer_weight_decay} "
-                                "dataset.max_num_query_images_per_episode=50 "
-                                "dataset.top_k_percent=100"
-                            )
-
-                        elif model_name == "clip-with-post-processing-baseline":
+                        # if model_name == "clip-baseline":
+                        #     name = f"{exp_name}-{model_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay}"
+                        #     current_script_text = (
+                        #         "/opt/conda/envs/main/bin/accelerate-launch "
+                        #         "--mixed_precision=bf16 "
+                        #         "--gradient_accumulation_steps=25 "
+                        #         "/app/capit/run.py "
+                        #         f"exp_name={name} "
+                        #         f"model={model_name} "
+                        #         f"model.pretrained={pretrained} "
+                        #         f"optimizer.lr={optimizer_lr} "
+                        #         f"optimizer.weight_decay={optimizer_weight_decay} "
+                        #         "dataset.max_num_query_images_per_episode=50 "
+                        #         "dataset.top_k_percent=50"
+                        #     )
+                        # elif model_name == "clip-with-post-processing-baseline":
+                        #     name = f"{exp_name}-{model_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay}-{backbone_fine_tunable}"
+                        #     current_script_text = (
+                        #         "/opt/conda/envs/main/bin/accelerate-launch "
+                        #         "--mixed_precision=bf16 "
+                        #         "--gradient_accumulation_steps=25 "
+                        #         "/app/capit/run.py "
+                        #         f"exp_name={name} "
+                        #         f"model={model_name} "
+                        #         f"model.pretrained={pretrained} "
+                        #         f"optimizer.lr={optimizer_lr} "
+                        #         f"optimizer.weight_decay={optimizer_weight_decay} "
+                        #         f"model.backbone_fine_tunable={backbone_fine_tunable} "
+                        #         "dataset.max_num_query_images_per_episode=50 "
+                        #         "dataset.top_k_percent=50"
+                        #     )
+                        if model_name == "cap":
                             name = f"{exp_name}-{model_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay}-{backbone_fine_tunable}"
                             current_script_text = (
                                 "/opt/conda/envs/main/bin/accelerate-launch "
@@ -53,11 +67,10 @@ def get_scripts(
                                 f"optimizer.weight_decay={optimizer_weight_decay} "
                                 f"model.backbone_fine_tunable={backbone_fine_tunable} "
                                 "dataset.max_num_query_images_per_episode=50 "
-                                "dataset.top_k_percent=100"
+                                "dataset.top_k_percent=50 "
+                                "dataset.max_num_collection_images_per_episode=20"
                             )
-
-                        script_list.add(current_script_text)
-
+                            script_list.add(current_script_text)
     return list(script_list)
 
 
@@ -66,7 +79,7 @@ if __name__ == "__main__":
 
     script_list = get_scripts(
         exp_name=f"{os.getenv('EXPERIMENT_NAME_PREFIX')}-v1.1",
-        model_name_list=["clip-baseline", "clip-with-post-processing-baseline"],
+        model_name_list=["clip-baseline", "clip-with-post-processing-baseline", "cap"],
         pretrained_list=[True, False],
         backbone_fine_tunable_list=[True, False],
         optimizer_lr_list=[2e-5, 2e-4],
