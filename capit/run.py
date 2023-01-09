@@ -192,6 +192,17 @@ def upload_code_to_wandb(code_dir: Union[pathlib.Path, str]):
 
 @hydra.main(config_path=None, config_name="config", version_base=None)
 def run(cfg: BaseConfig) -> None:
+    wandb_args = {
+        key: value for key, value in cfg.wandb_args.items() if key != "_target_"
+    }
+
+    config_dict = OmegaConf.to_container(cfg, resolve=True)
+    wandb_args["config"] = config_dict
+
+    wandb.init(**wandb_args)  # init wandb and log config
+
+    upload_code_to_wandb(cfg.code_dir)  # log code to wandb
+
     print(pretty_config(cfg, resolve=True))
 
     set_seed(seed=cfg.seed)
@@ -203,13 +214,13 @@ def run(cfg: BaseConfig) -> None:
     train_dataset: Dataset = instantiate(
         cfg.dataset,
         set_name=SplitType.TRAIN,
-        num_episodes=1000000,
+        num_episodes=100000,
         image_transforms=image_transforms,
     )
     val_dataset: Dataset = instantiate(
         cfg.dataset,
         set_name=SplitType.VAL,
-        num_episodes=2500,
+        num_episodes=2000,
         image_transforms=image_transforms,
     )
     test_dataset: Dataset = instantiate(
@@ -240,17 +251,6 @@ def run(cfg: BaseConfig) -> None:
 
     if hasattr(model, "is_built") and model.is_built == False:
         model.build(next(iter(train_dataloader)))
-
-    wandb_args = {
-        key: value for key, value in cfg.wandb_args.items() if key != "_target_"
-    }
-
-    config_dict = OmegaConf.to_container(cfg, resolve=True)
-    wandb_args["config"] = config_dict
-
-    wandb.init(**wandb_args)  # init wandb and log config
-
-    upload_code_to_wandb(cfg.code_dir)  # log code to wandb
 
     params = model.parameters()
 
