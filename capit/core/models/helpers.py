@@ -4,6 +4,7 @@ from capit.core import utils
 
 logger = utils.get_logger(__name__)
 
+
 def contrastive_logits_labels(logits: torch.Tensor):
     # logit shape is expected to be (batch_size, num_classes)
     labels = torch.arange(logits.shape[1]).type_as(logits).long()

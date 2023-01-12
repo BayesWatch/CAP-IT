@@ -3,7 +3,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from tabnanny import check
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -25,6 +25,7 @@ class Learner(nn.Module):
         experiment_name: str,
         experiment_dir: Union[str, Path],
         model: torch.nn.Module,
+        config: Optional[Dict[str, Any]] = None,
         resume: Union[bool, str] = False,
         evaluate_every_n_steps: int = None,
         evaluate_every_n_epochs: int = None,
@@ -54,7 +55,7 @@ class Learner(nn.Module):
 
         if not self.checkpoints_dir.exists():
             self.checkpoints_dir.mkdir(parents=True)
-
+        self.config = config
         self.model = model
         self.evaluate_every_n_steps = evaluate_every_n_steps
         self.evaluate_every_n_epochs = evaluate_every_n_epochs
@@ -458,8 +459,12 @@ class Learner(nn.Module):
         model = self.model.state_dict()
 
         state = dict(
-            exp=experiment_hyperparameters, optimizers=optimizer_states, model=model
+            exp=experiment_hyperparameters,
+            optimizers=optimizer_states,
+            model=model,
+            config=self.config,
         )
+
         ckpt_save_path = self.checkpoints_dir / f"ckpt_{self.step_idx}.pt"
         torch.save(obj=state, f=ckpt_save_path)
 
@@ -491,6 +496,7 @@ class Learner(nn.Module):
         self.model.load_state_dict(state["model"])
         self.step_idx = state["exp"]["step_idx"]
         self.epoch_idx = state["exp"]["epoch_idx"]
+        self.config = state["config"]
 
         for idx, (trainer, optimizer_state) in enumerate(
             zip(self.trainers, state["optimizers"])

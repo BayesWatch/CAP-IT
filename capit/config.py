@@ -124,6 +124,7 @@ learner_config = builds(Learner, populate_full_signature=True)
 
 learner_config = learner_config(
     model=None,
+    config=None,
     experiment_name=EXPERIMENT_NAME,
     experiment_dir=CHECKPOINT_DIR,
     resume=RESUME,

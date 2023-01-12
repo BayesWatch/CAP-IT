@@ -68,7 +68,7 @@ def get_scripts(
                                 f"model.backbone_fine_tunable={backbone_fine_tunable} "
                                 "dataset.max_num_query_images_per_episode=50 "
                                 "dataset.top_k_percent=50 "
-                                "dataset.max_num_collection_images_per_episode=20"
+                                "dataset.max_num_collection_images_per_episode=15"
                             )
                             script_list.add(current_script_text)
     return list(script_list)
@@ -82,8 +82,8 @@ if __name__ == "__main__":
         model_name_list=["clip-baseline", "clip-with-post-processing-baseline", "cap"],
         pretrained_list=[True, False],
         backbone_fine_tunable_list=[True, False],
-        optimizer_lr_list=[2e-5, 2e-4],
-        optimizer_weight_decay_list=[0.0, 1e-5],
+        optimizer_lr_list=[2e-5],
+        optimizer_weight_decay_list=[0.0],
     )
     # write a one liner that picks up date and time and converts them into a number
     datetime_seed = datetime.datetime.now().strftime("%Y%m%d%H%M%S")

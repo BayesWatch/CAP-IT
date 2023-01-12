@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import pathlib
 from typing import Any, Iterator, List, Optional, Tuple, Union
 from unittest.util import strclass
 
@@ -15,6 +16,14 @@ from capit.core.models.baselines import CLIPImageTextModel
 
 from capit.core.utils import get_logger
 from capit.decorators import configurable
+
+from huggingface_hub import (
+    Repository,
+    create_repo,
+    hf_hub_download,
+    login,
+    snapshot_download,
+)
 
 log = get_logger(__name__)
 
@@ -125,7 +134,7 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
     def build(self, batch: ImageTextRetrievalInput):
         log.info(f"Building model {self.__class__.__name__}")
         image = batch.target_image[0]
-        challenge_images = batch.challenge_images[0]
+        challenge_images = batch.challenge_images[0][0].unsqueeze(0)
         image = torch.cat([image.unsqueeze(0), challenge_images], dim=0)
         text = batch.target_text[0]
 
@@ -194,9 +203,9 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
         return self.step(batch)
 
     def preprocess_image(self, image: torch.Tensor):
-        image = image.cpu()
-        if len(image.shape) == 4:
-            image = image.unbind(0)
+        if isinstance(image, torch.Tensor):
+            if len(image.shape) == 4:
+                image = image.unbind(0)
         image = self.processor(images=image, return_tensors="pt")["pixel_values"]
         image = image.to(self.model.device)
 
@@ -242,6 +251,7 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
         challenge_images: TensorType["batch_size", "channel", "height", "width"],
         collection_images: TensorType["batch_size", "channel", "height", "width"],
         prompt_text: List[str],
+        **kwargs,
     ) -> CLIPOutput:
 
         challenge_images = self.preprocess_image(challenge_images)

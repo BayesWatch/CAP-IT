@@ -44,6 +44,7 @@ class ClassificationEvaluator(Evaluator):
         self.epoch_metrics = {}
         self.experiment_tracker = experiment_tracker
 
+    @torch.no_grad
     def validation_step(self, model, batch, batch_idx, step_idx, epoch_idx):
         model.eval()
         opt_loss, output_dict = model.step(batch)
@@ -59,6 +60,7 @@ class ClassificationEvaluator(Evaluator):
             metrics={"accuracy": metrics["accuracy"], "loss": loss},
         )
 
+    @torch.no_grad
     def test_step(self, model, batch, batch_idx, step_idx):
         model.eval()
         opt_loss, output_dict = model.step(batch)

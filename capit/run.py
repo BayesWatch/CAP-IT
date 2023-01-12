@@ -267,6 +267,7 @@ def run(cfg: BaseConfig) -> None:
 
     learner: Learner = instantiate(
         cfg.learner,
+        config=config_dict,
         model=model,
         trainers=[
             ClassificationTrainer(

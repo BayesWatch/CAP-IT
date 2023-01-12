@@ -246,8 +246,8 @@ class ImageTextRetrievalInput:
     challenge_images: TensorType[
         "batch_size", "num_challenge_images", "channels", "height", "width"
     ]
-    challenge_paths: List[str]
     target_text: List[str]
+    challenge_paths: List[str] = None
     collection_images: Optional[
         TensorType["batch_size", "num_collection_images", "channels", "height", "width"]
     ] = None

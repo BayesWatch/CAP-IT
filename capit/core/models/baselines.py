@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import pathlib
 from typing import Any, Iterator, List, Optional, Tuple, Union
 from unittest.util import strclass
 
@@ -14,6 +15,14 @@ from capit.core.data.datasets import ImageTextRetrievalInput
 
 from capit.core.utils import get_logger
 from capit.decorators import configurable
+
+from huggingface_hub import (
+    Repository,
+    create_repo,
+    hf_hub_download,
+    login,
+    snapshot_download,
+)
 
 log = get_logger(__name__)
 
@@ -88,8 +97,9 @@ class CLIPImageTextModel(nn.Module):
     def preprocess_image(
         self, image: TensorType["batch_size", "channel", "height", "width"]
     ):
-        if len(image.shape) == 4:
-            image = image.unbind(0)
+        if isinstance(image, torch.Tensor):
+            if len(image.shape) == 4:
+                image = image.unbind(0)
         image = self.processor(images=image, return_tensors="pt")["pixel_values"]
         image = image.to(self.model.device)
 
@@ -132,18 +142,19 @@ class CLIPImageTextModel(nn.Module):
 
     def forward(
         self,
-        image: TensorType["batch_size", "channel", "height", "width"],
-        text: List[str],
+        challenge_images: TensorType["batch_size", "channel", "height", "width"],
+        prompt_text: List[str],
+        **kwargs,
     ) -> CLIPOutput:
-        image = self.preprocess_image(image)
-        text = self.preprocess_text(text)
+        challenge_images = self.preprocess_image(challenge_images)
+        prompt_text = self.preprocess_text(prompt_text)
 
-        if len(text.shape) == 1:
-            text = text.unsqueeze(0)
+        if len(prompt_text.shape) == 1:
+            prompt_text = prompt_text.unsqueeze(0)
 
         clip_output = self.model.forward(
-            input_ids=text,
-            pixel_values=image,
+            input_ids=prompt_text,
+            pixel_values=challenge_images,
             output_hidden_states=True,
             return_loss=False,
         )
@@ -188,13 +199,27 @@ class CLIPImageTextModel(nn.Module):
         images = torch.cat([image.unsqueeze(0), challenge_images], dim=0)
         text = batch.target_text[0]
 
-        clip_output = self.forward(image=images, text=text)
+        clip_output = self.forward(challenge_images=images, prompt_text=text)
 
         accuracy = (clip_output.logits_per_image.argmax(dim=-1) == 0).float().mean()
         output_dict = clip_output.__dict__
         output_dict["metrics"] = {"accuracy": accuracy, "loss": clip_output.loss}
 
         return output_dict["loss"], output_dict
+
+    def load_from_repo(self, repo_path: str, model_name: str, cache_path: str):
+        checkpoint_path = hf_hub_download(
+            repo_id=repo_path,
+            cache_dir=pathlib.Path(cache_path),
+            resume_download=True,
+            subfolder="checkpoints",
+            filename=model_name,
+            repo_type="model",
+        )
+        state = torch.load(checkpoint_path)
+        print(list(state.keys()))
+        self.load_state_dict(state["model"])
+        return checkpoint_path
 
 
 @configurable
@@ -295,9 +320,9 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
         return self.step(batch)
 
     def preprocess_image(self, image: torch.Tensor):
-        image = image.cpu()
-        if len(image.shape) == 4:
-            image = image.unbind(0)
+        if isinstance(image, torch.Tensor):
+            if len(image.shape) == 4:
+                image = image.unbind(0)
         image = self.processor(images=image, return_tensors="pt")["pixel_values"]
         image = image.to(self.model.device)
 
@@ -340,19 +365,20 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
 
     def forward(
         self,
-        image: TensorType["batch_size", "channel", "height", "width"],
-        text: List[str],
+        challenge_images: TensorType["batch_size", "channel", "height", "width"],
+        prompt_text: List[str],
+        **kwargs,
     ) -> CLIPOutput:
 
-        image = self.preprocess_image(image)
-        text = self.preprocess_text(text)
+        challenge_images = self.preprocess_image(challenge_images)
+        prompt_text = self.preprocess_text(prompt_text)
 
-        if len(text.shape) == 1:
-            text = text.unsqueeze(0)
+        if len(prompt_text.shape) == 1:
+            prompt_text = prompt_text.unsqueeze(0)
 
         clip_output = self.model.forward(
-            input_ids=text,
-            pixel_values=image,
+            input_ids=prompt_text,
+            pixel_values=challenge_images,
             output_hidden_states=True,
             return_loss=False,
         )
