@@ -37,7 +37,22 @@ def get_scripts(
                         #         "dataset.max_num_query_images_per_episode=50 "
                         #         "dataset.top_k_percent=50"
                         #     )
-                        # elif model_name == "clip-with-post-processing-baseline":
+                        if model_name == "clip-with-post-processing-baseline":
+                            name = f"{exp_name}-{model_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay}-{backbone_fine_tunable}"
+                            current_script_text = (
+                                "/opt/conda/envs/main/bin/accelerate-launch "
+                                "--gradient_accumulation_steps=25 "
+                                "/app/capit/run.py "
+                                f"exp_name=fp32-{name} "
+                                f"model={model_name} "
+                                f"model.pretrained={pretrained} "
+                                f"optimizer.lr={optimizer_lr} "
+                                f"optimizer.weight_decay={optimizer_weight_decay} "
+                                f"model.backbone_fine_tunable={backbone_fine_tunable} "
+                                "dataset.max_num_query_images_per_episode=50 "
+                                "dataset.top_k_percent=25"
+                            )
+                        # if model_name == "cap":
                         #     name = f"{exp_name}-{model_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay}-{backbone_fine_tunable}"
                         #     current_script_text = (
                         #         "/opt/conda/envs/main/bin/accelerate-launch "
@@ -51,26 +66,10 @@ def get_scripts(
                         #         f"optimizer.weight_decay={optimizer_weight_decay} "
                         #         f"model.backbone_fine_tunable={backbone_fine_tunable} "
                         #         "dataset.max_num_query_images_per_episode=50 "
-                        #         "dataset.top_k_percent=50"
+                        #         "dataset.top_k_percent=50 "
+                        #         "dataset.max_num_collection_images_per_episode=15"
                         #     )
-                        if model_name == "cap":
-                            name = f"{exp_name}-{model_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay}-{backbone_fine_tunable}"
-                            current_script_text = (
-                                "/opt/conda/envs/main/bin/accelerate-launch "
-                                "--mixed_precision=bf16 "
-                                "--gradient_accumulation_steps=25 "
-                                "/app/capit/run.py "
-                                f"exp_name={name} "
-                                f"model={model_name} "
-                                f"model.pretrained={pretrained} "
-                                f"optimizer.lr={optimizer_lr} "
-                                f"optimizer.weight_decay={optimizer_weight_decay} "
-                                f"model.backbone_fine_tunable={backbone_fine_tunable} "
-                                "dataset.max_num_query_images_per_episode=50 "
-                                "dataset.top_k_percent=50 "
-                                "dataset.max_num_collection_images_per_episode=15"
-                            )
-                            script_list.add(current_script_text)
+                        script_list.add(current_script_text)
     return list(script_list)
 
 
@@ -82,7 +81,7 @@ if __name__ == "__main__":
         model_name_list=["clip-baseline", "clip-with-post-processing-baseline", "cap"],
         pretrained_list=[True, False],
         backbone_fine_tunable_list=[True, False],
-        optimizer_lr_list=[2e-5],
+        optimizer_lr_list=[1e-5],
         optimizer_weight_decay_list=[0.0],
     )
     # write a one liner that picks up date and time and converts them into a number
