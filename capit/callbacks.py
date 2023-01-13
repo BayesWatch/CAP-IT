@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
+import threading
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
@@ -11,6 +12,8 @@ import wandb
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from tqdm.rich import tqdm
+
+from capit.boilerplate import Learner
 
 from .utils import get_logger
 
@@ -29,7 +32,7 @@ class Callback(object):
 
     def on_init_start(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         train_dataloader: DataLoader = None,
         val_dataloaders: Union[List[DataLoader], DataLoader] = None,
@@ -39,7 +42,7 @@ class Callback(object):
 
     def on_init_end(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         train_dataloader: DataLoader = None,
         val_dataloaders: Union[List[DataLoader], DataLoader] = None,
@@ -49,7 +52,7 @@ class Callback(object):
 
     def on_epoch_start(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         train_dataloader: DataLoader = None,
         val_dataloaders: Union[List[DataLoader], DataLoader] = None,
@@ -59,7 +62,7 @@ class Callback(object):
 
     def on_epoch_end(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         train_dataloader: DataLoader = None,
         val_dataloaders: Union[List[DataLoader], DataLoader] = None,
@@ -105,7 +108,7 @@ class Callback(object):
 
     def on_train_start(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         train_dataloader: DataLoader = None,
     ) -> None:
@@ -113,7 +116,7 @@ class Callback(object):
 
     def on_train_end(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         train_dataloader: DataLoader = None,
         val_dataloaders: Union[List[DataLoader], DataLoader] = None,
@@ -123,7 +126,7 @@ class Callback(object):
 
     def on_validation_start(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         val_dataloaders: Union[List[DataLoader], DataLoader] = None,
     ):
@@ -131,7 +134,7 @@ class Callback(object):
 
     def on_validation_end(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         val_dataloaders: Union[List[DataLoader], DataLoader] = None,
     ) -> None:
@@ -139,7 +142,7 @@ class Callback(object):
 
     def on_testing_start(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         test_dataloaders: Union[List[DataLoader], DataLoader] = None,
     ) -> None:
@@ -147,7 +150,7 @@ class Callback(object):
 
     def on_testing_end(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         test_dataloaders: Union[List[DataLoader], DataLoader] = None,
     ) -> None:
@@ -157,7 +160,7 @@ class Callback(object):
         self,
         model: nn.Module,
         optimizers: List[torch.optim.Optimizer],
-        experiment: Any,
+        experiment: Learner,
         checkpoint_path: Path,
     ) -> None:
         pass
@@ -166,7 +169,7 @@ class Callback(object):
         self,
         model: nn.Module,
         optimizers: List[torch.optim.Optimizer],
-        experiment: Any,
+        experiment: Learner,
         checkpoint_path: Path,
     ) -> None:
         pass
@@ -179,7 +182,7 @@ class CallbackHandler(Callback):
 
     def on_init_start(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         train_dataloader: DataLoader = None,
         val_dataloaders: Union[List[DataLoader], DataLoader] = None,
@@ -196,7 +199,7 @@ class CallbackHandler(Callback):
 
     def on_init_end(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         train_dataloader: DataLoader = None,
         val_dataloaders: Union[List[DataLoader], DataLoader] = None,
@@ -213,7 +216,7 @@ class CallbackHandler(Callback):
 
     def on_epoch_start(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         train_dataloader: DataLoader = None,
         val_dataloaders: Union[List[DataLoader], DataLoader] = None,
@@ -230,7 +233,7 @@ class CallbackHandler(Callback):
 
     def on_epoch_end(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         train_dataloader: DataLoader = None,
         val_dataloaders: Union[List[DataLoader], DataLoader] = None,
@@ -291,7 +294,7 @@ class CallbackHandler(Callback):
 
     def on_train_start(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         train_dataloader: DataLoader = None,
     ) -> None:
@@ -300,7 +303,7 @@ class CallbackHandler(Callback):
 
     def on_train_end(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         train_dataloader: DataLoader = None,
         val_dataloaders: Union[List[DataLoader], DataLoader] = None,
@@ -317,7 +320,7 @@ class CallbackHandler(Callback):
 
     def on_validation_start(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         val_dataloaders: Union[List[DataLoader], DataLoader] = None,
     ):
@@ -326,7 +329,7 @@ class CallbackHandler(Callback):
 
     def on_validation_end(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         val_dataloaders: Union[List[DataLoader], DataLoader] = None,
     ) -> None:
@@ -335,7 +338,7 @@ class CallbackHandler(Callback):
 
     def on_testing_start(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         test_dataloaders: Union[List[DataLoader], DataLoader] = None,
     ) -> None:
@@ -344,7 +347,7 @@ class CallbackHandler(Callback):
 
     def on_testing_end(
         self,
-        experiment: Any,
+        experiment: Learner,
         model: nn.Module,
         test_dataloaders: Union[List[DataLoader], DataLoader] = None,
     ) -> None:
@@ -355,7 +358,7 @@ class CallbackHandler(Callback):
         self,
         model: nn.Module,
         optimizers: List[torch.optim.Optimizer],
-        experiment: Any,
+        experiment: Learner,
         checkpoint_path: Path,
     ) -> None:
         for callback in self.callbacks:
@@ -365,11 +368,29 @@ class CallbackHandler(Callback):
         self,
         model: nn.Module,
         optimizers: List[torch.optim.Optimizer],
-        experiment: Any,
+        experiment: Learner,
         checkpoint_path: Path,
     ) -> None:
         for callback in self.callbacks:
             callback.on_load_checkpoint(model, optimizers, experiment, checkpoint_path)
+
+
+class UploadCheckpointToHuggingFaceBackground(threading.Thread):
+    def __init__(self, repo_name: str, repo_owner: str, checkpoint_path: Path):
+        from huggingface_hub import HfApi
+
+        super().__init__()
+        self.repo_name = repo_name
+        self.repo_owner = repo_owner
+        self.checkpoint_path = checkpoint_path
+        self.hf_api = HfApi()
+
+    def run(self):
+        self.hf_api.upload_file(
+            repo_id=f"{self.repo_owner}/{self.repo_name}",
+            path_or_fileobj=self.checkpoint_path.as_posix(),
+            path_in_repo=f"checkpoints/{self.checkpoint_path.name}",
+        )
 
 
 class UploadCheckpointsToHuggingFace(Callback):
@@ -385,11 +406,13 @@ class UploadCheckpointsToHuggingFace(Callback):
         self,
         model: nn.Module,
         optimizers: List[torch.optim.Optimizer],
-        experiment: Any,
+        experiment: Learner,
         checkpoint_path: Path,
     ) -> None:
-        self.hf_api.upload_file(
-            repo_id=f"{self.repo_owner}/{self.repo_name}",
-            path_or_fileobj=checkpoint_path.as_posix(),
-            path_in_repo=f"checkpoints/{checkpoint_path.name}",
+        background_upload_thread = UploadCheckpointToHuggingFaceBackground(
+            repo_name=self.repo_name,
+            repo_owner=self.repo_owner,
+            checkpoint_path=checkpoint_path,
         )
+        background_upload_thread.start()
+        experiment.background_threads.append(background_upload_thread)

@@ -44,15 +44,15 @@ class ClassificationEvaluator(Evaluator):
         self.epoch_metrics = {}
         self.experiment_tracker = experiment_tracker
 
-    @torch.no_grad
     def validation_step(self, model, batch, batch_idx, step_idx, epoch_idx):
-        model.eval()
-        opt_loss, output_dict = model.step(batch)
-        metrics = output_dict["metrics"]
-        loss = opt_loss.detach()
+        with torch.no_grad():
+            model.eval()
+            opt_loss, output_dict = model.step(batch)
+            metrics = output_dict["metrics"]
+            loss = opt_loss.detach()
 
-        for key, value in metrics.items():
-            self.epoch_metrics.setdefault(key, []).append(value.detach().cpu())
+            for key, value in metrics.items():
+                self.epoch_metrics.setdefault(key, []).append(value.detach().cpu())
 
         return EvaluatorOutput(
             step_idx=step_idx,
@@ -60,15 +60,15 @@ class ClassificationEvaluator(Evaluator):
             metrics={"accuracy": metrics["accuracy"], "loss": loss},
         )
 
-    @torch.no_grad
     def test_step(self, model, batch, batch_idx, step_idx):
-        model.eval()
-        opt_loss, output_dict = model.step(batch)
-        metrics = output_dict["metrics"]
-        loss = opt_loss.detach()
+        with torch.no_grad():
+            model.eval()
+            opt_loss, output_dict = model.step(batch)
+            metrics = output_dict["metrics"]
+            loss = opt_loss.detach()
 
-        for key, value in metrics.items():
-            self.epoch_metrics.setdefault(key, []).append(value.detach().cpu())
+            for key, value in metrics.items():
+                self.epoch_metrics.setdefault(key, []).append(value.detach().cpu())
 
         return EvaluatorOutput(
             step_idx=step_idx,

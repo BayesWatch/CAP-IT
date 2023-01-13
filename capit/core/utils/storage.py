@@ -16,20 +16,18 @@ def save_json(filepath: Union[str, pathlib.Path], dict_to_store: Dict, overwrite
     if False adds metrics to existing
     """
 
-    if isinstance(filepath, pathlib.Path):
-        filepath = str(filepath)
+    if isinstance(filepath, str):
+        filepath = pathlib.Path(filepath)
 
-    metrics_file_path = filepath
+    if overwrite and filepath.exists():
+        filepath.unlink(missing_ok=True)
 
-    if overwrite and os.path.exists(metrics_file_path):
-        pathlib.Path(metrics_file_path).unlink(missing_ok=True)
+    if not filepath.parent.exists():
+        filepath.parent.mkdir(parents=True, exist_ok=True)
 
-    parent_folder = "/".join(filepath.split("/")[:-1])
-    if not os.path.exists(parent_folder):
-        os.makedirs(parent_folder, exist_ok=True)
-
-    with open(metrics_file_path, "wb") as json_file:
+    with open(filepath, "wb") as json_file:
         json_file.write(json.dumps(dict_to_store))
+    return filepath
 
 
 def load_json(filepath: Union[str, pathlib.Path]):
@@ -40,8 +38,8 @@ def load_json(filepath: Union[str, pathlib.Path]):
     :return: A dict with the metrics
     """
 
-    if isinstance(filepath, pathlib.Path):
-        filepath = str(filepath)
+    if isinstance(filepath, str):
+        filepath = pathlib.Path(filepath)
 
     with open(filepath, "rb") as json_file:
         dict_to_load = json.loads(json_file.read())

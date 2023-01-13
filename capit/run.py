@@ -11,6 +11,7 @@ from capit.core.data.datasets import (
     ToThreeChannels,
     get_image_transforms_instait,
 )
+from capit.core.utils.storage import save_json
 
 os.environ[
     "HYDRA_FULL_ERROR"
@@ -64,6 +65,9 @@ def instantiate_callbacks(callback_dict: dict) -> List[Callback]:
 
 
 def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
+    from huggingface_hub import HfApi
+    import orjson
+    import yaml
 
     if cfg.download_checkpoint_with_name is not None and cfg.download_latest is True:
         raise ValueError(
@@ -72,7 +76,8 @@ def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
 
     repo_path = cfg.repo_path
     login(token=os.environ["HF_TOKEN"], add_to_git_credential=True)
-    create_repo(repo_path, repo_type="model", exist_ok=True)
+    repo_url = create_repo(repo_path, repo_type="model", exist_ok=True)
+
     logger.info(f"Created repo {repo_path}, {cfg.hf_repo_dir}")
 
     if not pathlib.Path(cfg.hf_repo_dir).exists():
@@ -80,6 +85,30 @@ def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
         pathlib.Path(pathlib.Path(cfg.hf_repo_dir) / "checkpoints").mkdir(
             parents=True, exist_ok=True
         )
+
+    config_dict = OmegaConf.to_container(cfg, resolve=True)
+
+    hf_api = HfApi()
+    config_json_path: pathlib.Path = save_json(
+        filepath=pathlib.Path(cfg.hf_repo_dir) / "config.json",
+        dict_to_store=config_dict,
+        overwrite=True,
+    )
+    hf_api.upload_file(
+        repo_id=repo_path,
+        path_or_fileobj=config_json_path.as_posix(),
+        path_in_repo="config.json",
+    )
+
+    config_yaml_path = pathlib.Path(cfg.hf_repo_dir) / "config.yaml"
+    with open(config_yaml_path, "w") as file:
+        documents = yaml.dump(config_dict, file)
+
+    hf_api.upload_file(
+        repo_id=repo_path,
+        path_or_fileobj=config_yaml_path.as_posix(),
+        path_in_repo="config.yaml",
+    )
 
     try:
         if cfg.download_checkpoint_with_name is not None:
@@ -113,7 +142,7 @@ def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
                 pathlib.Path(cfg.hf_repo_dir)
                 / "checkpoints"
                 / cfg.download_checkpoint_with_name
-            )
+            ), repo_url
 
         elif cfg.download_latest:
             logger.info(
@@ -142,7 +171,7 @@ def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
             logger.info(
                 f"Downloaded checkpoint from huggingface hub to {cfg.hf_repo_dir}"
             )
-            return pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest.pt"
+            return pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest.pt", repo_url
         else:
             logger.info(
                 "Download all available checkpoints, if they exist, from the huggingface hub 👨🏻‍💻"
@@ -169,13 +198,13 @@ def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
                     f"Downloaded checkpoint from huggingface hub to {latest_checkpoint}"
                 )
             return cfg.hf_repo_dir / "checkpoints" / "latest.pt"
-        return None
+        return None, repo_url
 
     except Exception as e:
         logger.exception(
             f"Could not download checkpoint_latest.pt from huggingface hub: {e}"
         )
-        return None
+        return None, repo_url
 
 
 def upload_code_to_wandb(code_dir: Union[pathlib.Path, str]):
@@ -195,19 +224,16 @@ def run(cfg: BaseConfig) -> None:
     wandb_args = {
         key: value for key, value in cfg.wandb_args.items() if key != "_target_"
     }
-
+    ckpt_path, repo_url = create_hf_model_repo_and_download_maybe(cfg)
     config_dict = OmegaConf.to_container(cfg, resolve=True)
     wandb_args["config"] = config_dict
-
+    wandb_args["notes"] = repo_url
     wandb.init(**wandb_args)  # init wandb and log config
 
     upload_code_to_wandb(cfg.code_dir)  # log code to wandb
-
     print(pretty_config(cfg, resolve=True))
 
     set_seed(seed=cfg.seed)
-    ckpt_path = create_hf_model_repo_and_download_maybe(cfg)
-
     model: nn.Module = instantiate(cfg.model)
     image_transforms = get_image_transforms_instait()
 
@@ -267,7 +293,6 @@ def run(cfg: BaseConfig) -> None:
 
     learner: Learner = instantiate(
         cfg.learner,
-        config=config_dict,
         model=model,
         trainers=[
             ClassificationTrainer(

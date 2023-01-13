@@ -19,5 +19,5 @@ export CLUSTER_NAME=spot-gpu-cluster-1
 export CLUSTER_ZONE=us-central1-a
 export CLUSTER_PROJECT=tali-multi-modal
 
-export EXPERIMENT_NAME_PREFIX="capit-v2"
+export EXPERIMENT_NAME_PREFIX="debug"
 export DOCKER_IMAGE_PATH="ghcr.io/bayeswatch/capit:latest"

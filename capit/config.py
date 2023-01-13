@@ -124,13 +124,12 @@ learner_config = builds(Learner, populate_full_signature=True)
 
 learner_config = learner_config(
     model=None,
-    config=None,
     experiment_name=EXPERIMENT_NAME,
     experiment_dir=CHECKPOINT_DIR,
     resume=RESUME,
-    evaluate_every_n_steps=5000,
-    checkpoint_after_validation=True,
-    checkpoint_every_n_steps=5000,
+    evaluate_every_n_steps=1000,
+    checkpoint_after_validation=False,
+    checkpoint_every_n_steps=1000,
     train_iters=TOTAL_TRAIN_STEPS,
 )
 
