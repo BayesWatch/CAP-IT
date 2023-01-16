@@ -44,7 +44,9 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
         pretrained: bool = True,
         backbone_fine_tunable: bool = True,
     ):
-        super().__init__(model_name_or_path=model_name_or_path, pretrained=pretrained)
+        super().__init__(
+            model_name_or_path=model_name_or_path, pretrained=pretrained
+        )
         self.fine_tunable = backbone_fine_tunable
 
         if not pretrained:
@@ -82,12 +84,16 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
             d_model=x.shape[2], nhead=8, dim_feedforward=2048
         )
         encoder_norm = nn.LayerNorm(x.shape[2])
-        self.post_processing_module[f"{name}_transformer"] = nn.TransformerEncoder(
+        self.post_processing_module[
+            f"{name}_transformer"
+        ] = nn.TransformerEncoder(
             encoder_layer=transformer_encoder, num_layers=1, norm=encoder_norm
         )
         x = self.post_processing_module[f"{name}_transformer"](x)
         x = x.mean(dim=1)
-        self.post_processing_module[f"{name}_output"] = nn.Linear(x.shape[1], 512)
+        self.post_processing_module[f"{name}_output"] = nn.Linear(
+            x.shape[1], 512
+        )
         x = self.post_processing_module[f"{name}_output"](x)
         return x
 
@@ -102,7 +108,9 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
             d_model=x.shape[2], nhead=8, dim_feedforward=2048
         )
         encoder_norm = nn.LayerNorm(x.shape[2])
-        self.post_processing_module[f"{name}_transformer"] = nn.TransformerEncoder(
+        self.post_processing_module[
+            f"{name}_transformer"
+        ] = nn.TransformerEncoder(
             encoder_layer=transformer_encoder, num_layers=1, norm=encoder_norm
         )
         x = self.post_processing_module[f"{name}_transformer"](x)
@@ -158,9 +166,9 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
         collection_personalization_vector = self.build_cap_module(
             name="cap-network",
             x=collection_image_embeddings,
-            text_embedding_size=clip_output.text_model_output.hidden_states[-1].shape[
-                2
-            ],
+            text_embedding_size=clip_output.text_model_output.hidden_states[
+                -1
+            ].shape[2],
             image_embedding_size=clip_output.vision_model_output.hidden_states[
                 -1
             ].shape[2],
@@ -206,7 +214,9 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
         if isinstance(image, torch.Tensor):
             if len(image.shape) == 4:
                 image = image.unbind(0)
-        image = self.processor(images=image, return_tensors="pt")["pixel_values"]
+        image = self.processor(images=image, return_tensors="pt")[
+            "pixel_values"
+        ]
         image = image.to(self.model.device)
 
         if len(image.shape) != 4:
@@ -231,7 +241,9 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
 
         image_hidden_token = clip_output.vision_model_output.hidden_states[-1]
 
-        image_output = self.apply_post_processing(name="image", x=image_hidden_token)
+        image_output = self.apply_post_processing(
+            name="image", x=image_hidden_token
+        )
         return image_output
 
     def forward_text(self, text: torch.Tensor) -> torch.Tensor:
@@ -243,13 +255,19 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
 
         text_hidden_token = clip_output.vision_model_output.hidden_states[-1]
 
-        text_output = self.apply_post_processing(name="text", x=text_hidden_token)
+        text_output = self.apply_post_processing(
+            name="text", x=text_hidden_token
+        )
         return text_output
 
     def forward(
         self,
-        challenge_images: TensorType["batch_size", "channel", "height", "width"],
-        collection_images: TensorType["batch_size", "channel", "height", "width"],
+        challenge_images: TensorType[
+            "batch_size", "channel", "height", "width"
+        ],
+        collection_images: TensorType[
+            "batch_size", "channel", "height", "width"
+        ],
         prompt_text: List[str],
         **kwargs,
     ) -> CLIPOutput:
@@ -302,8 +320,12 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
             dim=1,
         )
 
-        image_output = self.apply_post_processing(name="image", x=image_hidden_token)
-        text_output = self.apply_post_processing(name="text", x=text_hidden_token)
+        image_output = self.apply_post_processing(
+            name="image", x=image_hidden_token
+        )
+        text_output = self.apply_post_processing(
+            name="text", x=text_hidden_token
+        )
 
         similarity = (
             torch.matmul(text_output, image_output.t()) * self.model.logit_scale
@@ -323,7 +345,9 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
         image = batch.target_image[0]
         challenge_images = batch.challenge_images[0]
         collection_images = batch.collection_images[0]
-        challenge_images = torch.cat([image.unsqueeze(0), challenge_images], dim=0)
+        challenge_images = torch.cat(
+            [image.unsqueeze(0), challenge_images], dim=0
+        )
         prompt_text = batch.target_text[0]
 
         clip_output = self.forward(
@@ -332,9 +356,14 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
             collection_images=collection_images,
         )
 
-        accuracy = (clip_output.logits_per_image.argmax(dim=-1) == 0).float().mean()
+        accuracy = (
+            (clip_output.logits_per_image.argmax(dim=-1) == 0).float().mean()
+        )
         output_dict = clip_output.__dict__
-        output_dict["metrics"] = {"accuracy": accuracy, "loss": clip_output.loss}
+        output_dict["metrics"] = {
+            "accuracy": accuracy,
+            "loss": clip_output.loss,
+        }
 
         return output_dict["loss"], output_dict
 

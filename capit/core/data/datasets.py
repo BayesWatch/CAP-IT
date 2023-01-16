@@ -73,9 +73,9 @@ def extract_captions_from_file(filepath: str):
 def check_if_image_has_matching_info_file(image_path: str):
     if isinstance(image_path, pathlib.Path):
         image_path = str(image_path)
-    info_file_path = pathlib.Path(image_path.replace("image", "info")).with_suffix(
-        ".info"
-    )
+    info_file_path = pathlib.Path(
+        image_path.replace("image", "info")
+    ).with_suffix(".info")
     return info_file_path.exists()
 
 
@@ -249,7 +249,9 @@ class ImageTextRetrievalInput:
     target_text: List[str]
     challenge_paths: List[str] = None
     collection_images: Optional[
-        TensorType["batch_size", "num_collection_images", "channels", "height", "width"]
+        TensorType[
+            "batch_size", "num_collection_images", "channels", "height", "width"
+        ]
     ] = None
     collection_paths: Optional[List[str]] = None
 
@@ -332,7 +334,9 @@ class InstagramImageTextMultiModalDataset(Dataset):
             )
         else:
             logger.info("Loading info and image paths from cache")
-            self._user_to_post_dict = load_json(filepath=user_to_post_id_cache_path)
+            self._user_to_post_dict = load_json(
+                filepath=user_to_post_id_cache_path
+            )
 
         self._post_image_dir = post_image_dir
         self._post_info_dir = post_info_dir
@@ -352,12 +356,14 @@ class InstagramImageTextMultiModalDataset(Dataset):
         elif set_name == SplitType.VAL:
             start_idx = int(set_name_to_ratio[SplitType.TRAIN])
             end_idx = int(
-                set_name_to_ratio[SplitType.TRAIN] + set_name_to_ratio[SplitType.VAL]
+                set_name_to_ratio[SplitType.TRAIN]
+                + set_name_to_ratio[SplitType.VAL]
             )
             self._idx_to_user_name = self._idx_to_user_name[start_idx:end_idx]
         elif set_name == SplitType.TEST:
             start_idx = int(
-                set_name_to_ratio[SplitType.TRAIN] + set_name_to_ratio[SplitType.VAL]
+                set_name_to_ratio[SplitType.TRAIN]
+                + set_name_to_ratio[SplitType.VAL]
             )
 
             self._idx_to_user_name = self._idx_to_user_name[start_idx:]
@@ -381,9 +387,9 @@ class InstagramImageTextMultiModalDataset(Dataset):
         data_dict = ImageTextRetrievalInput()
 
         try:
-            data_dict.text = load_json(info_path)["edge_media_to_caption"]["edges"][0][
-                "node"
-            ]["text"]
+            data_dict.text = load_json(info_path)["edge_media_to_caption"][
+                "edges"
+            ][0]["node"]["text"]
         except:
             logger.debug(
                 "Could not find valid text for this target image, will resample",
@@ -449,9 +455,13 @@ class InstagramImageTextMultiModalDataset(Dataset):
                     collection_image = Image.open(image_path)
 
                     if self.image_transforms is not None:
-                        collection_image = self.image_transforms(collection_image)
+                        collection_image = self.image_transforms(
+                            collection_image
+                        )
                     query_image_set.append(collection_image)
-        elif self.query_image_source == ChallengeSamplesSourceTypes.ACROSS_USERS:
+        elif (
+            self.query_image_source == ChallengeSamplesSourceTypes.ACROSS_USERS
+        ):
 
             shuffled_user_names = rng.choice(
                 self._idx_to_user_name,
@@ -464,9 +474,9 @@ class InstagramImageTextMultiModalDataset(Dataset):
                     collection_post_i = rng.choice(
                         len(self._user_to_post_dict[collection_user_name])
                     )
-                    collection_post_id = self._user_to_post_dict[collection_user_name][
-                        collection_post_i
-                    ]
+                    collection_post_id = self._user_to_post_dict[
+                        collection_user_name
+                    ][collection_post_i]
 
                     (
                         image_path,
@@ -481,7 +491,9 @@ class InstagramImageTextMultiModalDataset(Dataset):
                     collection_image = Image.open(image_path)
 
                     if self.image_transforms is not None:
-                        collection_image = self.image_transforms(collection_image)
+                        collection_image = self.image_transforms(
+                            collection_image
+                        )
                     query_image_set.append(collection_image)
 
         else:
@@ -491,7 +503,9 @@ class InstagramImageTextMultiModalDataset(Dataset):
 
         return query_image_set
 
-    def _get_user_collection_context_images(self, rng, user_name, target_post_id):
+    def _get_user_collection_context_images(
+        self, rng, user_name, target_post_id
+    ):
 
         collection_images = []
 
@@ -532,7 +546,10 @@ class InstagramImageTextMultiModalDataset(Dataset):
 
         for post_id in self._user_to_post_dict[user_name]:
 
-            image_path, info_path = generate_post_paths_from_user_name_and_post_id(
+            (
+                image_path,
+                info_path,
+            ) = generate_post_paths_from_user_name_and_post_id(
                 username=user_name,
                 post_id=post_id,
                 post_image_dir=self._post_image_dir,
@@ -540,9 +557,9 @@ class InstagramImageTextMultiModalDataset(Dataset):
             )
 
             try:
-                text = load_json(info_path)["edge_media_to_caption"]["edges"][0][
-                    "node"
-                ]["text"]
+                text = load_json(info_path)["edge_media_to_caption"]["edges"][
+                    0
+                ]["node"]["text"]
 
                 image = Image.open(image_path)
 
@@ -581,7 +598,9 @@ class ToThreeChannels(nn.Module):
 
 
 def default_image_transforms():
-    return Compose([Resize(224), RandomCrop(224), ToTensor(), ToThreeChannels()])
+    return Compose(
+        [Resize(224), RandomCrop(224), ToTensor(), ToThreeChannels()]
+    )
 
 
 default_image_transforms_config = builds(default_image_transforms)
@@ -632,7 +651,8 @@ class InstagramImageTextMultiModalDatasePyArrow(Dataset):
         set_name_to_ratio = {
             SplitType.TRAIN: floor(0.8 * self.total_num_users),
             SplitType.VAL: floor(0.1 * self.total_num_users),
-            SplitType.TEST: self.total_num_users - floor(0.9 * self.total_num_users),
+            SplitType.TEST: self.total_num_users
+            - floor(0.9 * self.total_num_users),
         }
 
         if set_name == SplitType.TRAIN:
@@ -643,18 +663,22 @@ class InstagramImageTextMultiModalDatasePyArrow(Dataset):
         elif set_name == SplitType.VAL:
             start_idx = int(set_name_to_ratio[SplitType.TRAIN])
             end_idx = int(
-                set_name_to_ratio[SplitType.TRAIN] + set_name_to_ratio[SplitType.VAL]
+                set_name_to_ratio[SplitType.TRAIN]
+                + set_name_to_ratio[SplitType.VAL]
             )
             self.set_usernames = self.username_list[start_idx:end_idx]
 
         elif set_name == SplitType.TEST:
             start_idx = int(
-                set_name_to_ratio[SplitType.TRAIN] + set_name_to_ratio[SplitType.VAL]
+                set_name_to_ratio[SplitType.TRAIN]
+                + set_name_to_ratio[SplitType.VAL]
             )
 
             self.set_usernames = self.username_list[start_idx:]
 
-    def read_image_caption(self, image_path: pathlib.Path, info_path: pathlib.Path):
+    def read_image_caption(
+        self, image_path: pathlib.Path, info_path: pathlib.Path
+    ):
 
         if isinstance(image_path, str):
             image_path = pathlib.Path(image_path)
@@ -667,14 +691,16 @@ class InstagramImageTextMultiModalDatasePyArrow(Dataset):
         )
         image_path = pathlib.Path(image_path)
 
-        info_path = info_path.as_posix().replace("/data", self.data_source.as_posix())
+        info_path = info_path.as_posix().replace(
+            "/data", self.data_source.as_posix()
+        )
 
         info_path = pathlib.Path(info_path)
 
         try:
-            text = load_json(info_path)["edge_media_to_caption"]["edges"][0]["node"][
-                "text"
-            ]
+            text = load_json(info_path)["edge_media_to_caption"]["edges"][0][
+                "node"
+            ]["text"]
         except Exception:
             logger.debug(
                 "Could not find valid text for this target image, will resample",
@@ -744,10 +770,13 @@ class InstagramImageTextMultiModalDatasePyArrow(Dataset):
                 num_remaining_user_posts,
             )
             challenge_posts = user_posts[
-                num_collection_posts : num_collection_posts + num_challenge_posts
+                num_collection_posts : num_collection_posts
+                + num_challenge_posts
             ]
 
-        elif self.query_image_source == ChallengeSamplesSourceTypes.ACROSS_USERS:
+        elif (
+            self.query_image_source == ChallengeSamplesSourceTypes.ACROSS_USERS
+        ):
             random_user_name_idx = rng.randint(1, len(self.set_usernames))
             while self.set_usernames[random_user_name_idx] == user_name:
                 random_user_name_idx = rng.randint(1, len(self.set_usernames))
@@ -775,14 +804,18 @@ class InstagramImageTextMultiModalDatasePyArrow(Dataset):
 
         data_dict = defaultdict(list)
 
-        image, text = self.read_image_caption(target_image_path, target_info_path)
+        image, text = self.read_image_caption(
+            target_image_path, target_info_path
+        )
         data_dict["target_image"] = image
         data_dict["target_text"] = text
 
         for image_path, info_path in collection_posts:
             image, text = self.read_image_caption(image_path, info_path)
             data_dict["collection_images"].append(image)
-            data_dict["collection_paths"].append(dict(image=image_path, info=info_path))
+            data_dict["collection_paths"].append(
+                dict(image=image_path, info=info_path)
+            )
 
         if (
             len(data_dict["collection_images"]) == 0
@@ -794,13 +827,17 @@ class InstagramImageTextMultiModalDatasePyArrow(Dataset):
         for image_path, info_path in challenge_posts:
             image, text = self.read_image_caption(image_path, info_path)
             data_dict["challenge_images"].append(image)
-            data_dict["challenge_paths"].append(dict(image=image_path, info=info_path))
+            data_dict["challenge_paths"].append(
+                dict(image=image_path, info=info_path)
+            )
 
         if len(data_dict["challenge_images"]) == 0:
             logger.debug("No challenge posts found for this episode")
             return self.__getitem__(index + 1)
 
-        data_dict["challenge_images"] = torch.stack(data_dict["challenge_images"])
+        data_dict["challenge_images"] = torch.stack(
+            data_dict["challenge_images"]
+        )
 
         if (
             len(data_dict["collection_images"]) == 0
@@ -821,13 +858,17 @@ class InstagramImageTextMultiModalDatasePyArrow(Dataset):
 
     def get_user_name_to_post_count_dict(self):
         return {
-            user_name: len(pq.read_table(self.table_source / user_name).to_pandas())
+            user_name: len(
+                pq.read_table(self.table_source / user_name).to_pandas()
+            )
             for user_name in self.set_usernames
         }
 
 
 @configurable
-class InstagramImageTextMultiModalDatasetByUser(InstagramImageTextMultiModalDataset):
+class InstagramImageTextMultiModalDatasetByUser(
+    InstagramImageTextMultiModalDataset
+):
     def __init__(
         self,
         dataset_dir: str,
@@ -866,8 +907,13 @@ class InstagramImageTextMultiModalDatasetByUser(InstagramImageTextMultiModalData
         captions = []
         filepaths = []
 
-        for idx, collection_post_id in enumerate(self._user_to_post_dict[user_name]):
-            (image_path, info_path,) = generate_post_paths_from_user_name_and_post_id(
+        for idx, collection_post_id in enumerate(
+            self._user_to_post_dict[user_name]
+        ):
+            (
+                image_path,
+                info_path,
+            ) = generate_post_paths_from_user_name_and_post_id(
                 username=user_name,
                 post_id=collection_post_id,
                 post_image_dir=self._post_image_dir,
@@ -921,9 +967,9 @@ class InstagramImageTextMultiModalDatasetByUser(InstagramImageTextMultiModalData
 
     def get_text_from_filepath(self, filepath):
         try:
-            text = load_json(filepath)["edge_media_to_caption"]["edges"][0]["node"][
-                "text"
-            ]
+            text = load_json(filepath)["edge_media_to_caption"]["edges"][0][
+                "node"
+            ]["text"]
 
             return text
         except Exception:
@@ -943,7 +989,9 @@ def dataclass_collate(batch):
     Returns:
         dict: Dictionary of values from the dataclass objects.
     """
-    if isinstance(batch[0], dict) or not hasattr(batch[0], "__dataclass_fields__"):
+    if isinstance(batch[0], dict) or not hasattr(
+        batch[0], "__dataclass_fields__"
+    ):
         return default_collate(batch)
     else:
         batched_dict = {

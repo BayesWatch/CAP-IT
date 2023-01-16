@@ -6,7 +6,9 @@ from typing import Dict, Union
 import orjson as json
 
 
-def save_json(filepath: Union[str, pathlib.Path], dict_to_store: Dict, overwrite=True):
+def save_json(
+    filepath: Union[str, pathlib.Path], dict_to_store: Dict, overwrite=True
+):
     """
     Saves a metrics .json file with the metrics
     :param log_dir: Directory of log

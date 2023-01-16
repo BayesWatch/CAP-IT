@@ -89,7 +89,9 @@ HFModelUploadConfig = builds(
     UploadCheckpointsToHuggingFace, populate_full_signature=True
 )
 
-hf_upload = HFModelUploadConfig(repo_name=EXPERIMENT_NAME, repo_owner=HF_USERNAME)
+hf_upload = HFModelUploadConfig(
+    repo_name=EXPERIMENT_NAME, repo_owner=HF_USERNAME
+)
 
 default_callbacks = dict(hf_uploader=hf_upload)
 
@@ -113,11 +115,15 @@ cosine_learning_rate_scheduler_config = cosine_learning_rate_scheduler_config()
 
 ## Model configs ################################################################
 
-baseline_model_config = CLIPImageTextModel.build_config(populate_full_signature=True)
+baseline_model_config = CLIPImageTextModel.build_config(
+    populate_full_signature=True
+)
 fine_tuning_model_config = CLIPWithPostProcessingImageTextModel.build_config(
     populate_full_signature=True
 )
-cap_model_config = CAPCLIPImageTextModel.build_config(populate_full_signature=True)
+cap_model_config = CAPCLIPImageTextModel.build_config(
+    populate_full_signature=True
+)
 
 ## Trainer/Learner configs ######################################################
 learner_config = builds(Learner, populate_full_signature=True)
@@ -129,7 +135,7 @@ learner_config = learner_config(
     resume=RESUME,
     evaluate_every_n_steps=1000,
     checkpoint_after_validation=False,
-    checkpoint_every_n_steps=1000,
+    checkpoint_every_n_steps=250,
     train_iters=TOTAL_TRAIN_STEPS,
 )
 
@@ -275,9 +281,13 @@ def collect_config_store():
         node=learner_config,
     )
 
-    config_store.store(group="callbacks", name="default", node=default_callbacks)
+    config_store.store(
+        group="callbacks", name="default", node=default_callbacks
+    )
 
-    config_store.store(group="wandb_args", name="default", node=wandb_args_default)
+    config_store.store(
+        group="wandb_args", name="default", node=wandb_args_default
+    )
 
     config_store.store(
         group="hydra",
@@ -319,7 +329,9 @@ def collect_config_store():
                 root={"handlers": ["rich"], "level": "INFO"},
                 disable_existing_loggers=False,
             ),
-            run={"dir": "${current_experiment_dir}/hydra-run/${now:%Y-%m-%d_%H-%M-%S}"},
+            run={
+                "dir": "${current_experiment_dir}/hydra-run/${now:%Y-%m-%d_%H-%M-%S}"
+            },
             sweep={
                 "dir": "${current_experiment_dir}/hydra-multirun/${now:%Y-%m-%d_%H-%M-%S}",
                 "subdir": "${hydra.job.num}",

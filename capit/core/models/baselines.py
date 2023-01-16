@@ -100,7 +100,9 @@ class CLIPImageTextModel(nn.Module):
         if isinstance(image, torch.Tensor):
             if len(image.shape) == 4:
                 image = image.unbind(0)
-        image = self.processor(images=image, return_tensors="pt")["pixel_values"]
+        image = self.processor(images=image, return_tensors="pt")[
+            "pixel_values"
+        ]
         image = image.to(self.model.device)
 
         if len(image.shape) != 4:
@@ -142,7 +144,9 @@ class CLIPImageTextModel(nn.Module):
 
     def forward(
         self,
-        challenge_images: TensorType["batch_size", "channel", "height", "width"],
+        challenge_images: TensorType[
+            "batch_size", "channel", "height", "width"
+        ],
         prompt_text: List[str],
         **kwargs,
     ) -> CLIPOutput:
@@ -184,7 +188,9 @@ class CLIPImageTextModel(nn.Module):
         image_embeds = self.forward_image(image)
         text_embeds = self.forward_text(text)
 
-        image_embeds = image_embeds / image_embeds.norm(p=2, dim=-1, keepdim=True)
+        image_embeds = image_embeds / image_embeds.norm(
+            p=2, dim=-1, keepdim=True
+        )
         text_embeds = text_embeds / text_embeds.norm(p=2, dim=-1, keepdim=True)
 
         # cosine similarity as logits
@@ -201,9 +207,14 @@ class CLIPImageTextModel(nn.Module):
 
         clip_output = self.forward(challenge_images=images, prompt_text=text)
 
-        accuracy = (clip_output.logits_per_image.argmax(dim=-1) == 0).float().mean()
+        accuracy = (
+            (clip_output.logits_per_image.argmax(dim=-1) == 0).float().mean()
+        )
         output_dict = clip_output.__dict__
-        output_dict["metrics"] = {"accuracy": accuracy, "loss": clip_output.loss}
+        output_dict["metrics"] = {
+            "accuracy": accuracy,
+            "loss": clip_output.loss,
+        }
 
         return output_dict["loss"], output_dict
 
@@ -230,7 +241,9 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
         pretrained: bool = True,
         backbone_fine_tunable: bool = True,
     ):
-        super().__init__(model_name_or_path=model_name_or_path, pretrained=pretrained)
+        super().__init__(
+            model_name_or_path=model_name_or_path, pretrained=pretrained
+        )
         self.fine_tunable = backbone_fine_tunable
 
         if not pretrained:
@@ -268,12 +281,16 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
             d_model=x.shape[2], nhead=8, dim_feedforward=2048
         )
         encoder_norm = nn.LayerNorm(x.shape[2])
-        self.post_processing_module[f"{name}_transformer"] = nn.TransformerEncoder(
+        self.post_processing_module[
+            f"{name}_transformer"
+        ] = nn.TransformerEncoder(
             encoder_layer=transformer_encoder, num_layers=1, norm=encoder_norm
         )
         x = self.post_processing_module[f"{name}_transformer"](x)
         x = x.mean(dim=1)
-        self.post_processing_module[f"{name}_output"] = nn.Linear(x.shape[1], 512)
+        self.post_processing_module[f"{name}_output"] = nn.Linear(
+            x.shape[1], 512
+        )
         x = self.post_processing_module[f"{name}_output"](x)
         return x
 
@@ -323,7 +340,9 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
         if isinstance(image, torch.Tensor):
             if len(image.shape) == 4:
                 image = image.unbind(0)
-        image = self.processor(images=image, return_tensors="pt")["pixel_values"]
+        image = self.processor(images=image, return_tensors="pt")[
+            "pixel_values"
+        ]
         image = image.to(self.model.device)
 
         if len(image.shape) != 4:
@@ -348,7 +367,9 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
 
         image_hidden_token = clip_output.vision_model_output.hidden_states[-1]
 
-        image_output = self.apply_post_processing(name="image", x=image_hidden_token)
+        image_output = self.apply_post_processing(
+            name="image", x=image_hidden_token
+        )
         return image_output
 
     def forward_text(self, text: torch.Tensor) -> torch.Tensor:
@@ -360,12 +381,16 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
 
         text_hidden_token = clip_output.vision_model_output.hidden_states[-1]
 
-        text_output = self.apply_post_processing(name="text", x=text_hidden_token)
+        text_output = self.apply_post_processing(
+            name="text", x=text_hidden_token
+        )
         return text_output
 
     def forward(
         self,
-        challenge_images: TensorType["batch_size", "channel", "height", "width"],
+        challenge_images: TensorType[
+            "batch_size", "channel", "height", "width"
+        ],
         prompt_text: List[str],
         **kwargs,
     ) -> CLIPOutput:
@@ -386,8 +411,12 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
         image_hidden_token = clip_output.vision_model_output.hidden_states[-1]
         text_hidden_token = clip_output.text_model_output.hidden_states[-1]
 
-        image_output = self.apply_post_processing(name="image", x=image_hidden_token)
-        text_output = self.apply_post_processing(name="text", x=text_hidden_token)
+        image_output = self.apply_post_processing(
+            name="image", x=image_hidden_token
+        )
+        text_output = self.apply_post_processing(
+            name="text", x=text_hidden_token
+        )
 
         similarity = (
             torch.matmul(text_output, image_output.t()) * self.model.logit_scale
@@ -412,7 +441,9 @@ if __name__ == "__main__":
         target_text=["a picture of a cat"],
     )
     model_name_or_path = "openai/clip-vit-large-patch14"
-    model = CLIPImageTextModel(model_name_or_path=model_name_or_path, pretrained=True)
+    model = CLIPImageTextModel(
+        model_name_or_path=model_name_or_path, pretrained=True
+    )
     model.build(batch=dummy_inputs)
     out = model.step(batch=dummy_inputs, batch_idx=0)
     print(out)

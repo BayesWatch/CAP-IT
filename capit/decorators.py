@@ -23,7 +23,10 @@ def check_if_configurable(func: Callable, phase_name: str) -> bool:
 
 def collect_metrics(func: Callable) -> Callable:
     def collect_metrics(
-        step_idx: int, metrics_dict: dict(), phase_name: str, experiment_tracker: Any
+        step_idx: int,
+        metrics_dict: dict(),
+        phase_name: str,
+        experiment_tracker: Any,
     ) -> None:
         for metric_key, computed_value in metrics_dict.items():
             if computed_value is not None:

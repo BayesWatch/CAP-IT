@@ -43,19 +43,26 @@ def compute_cross_modal_cosine_similarities(
                 and target_value is not None
             ):
                 if f"{source_key}_to_{target_key}" in logit_scale_dict:
-                    logit_scale_idx = logit_scale_dict[f"{source_key}_to_{target_key}"]
+                    logit_scale_idx = logit_scale_dict[
+                        f"{source_key}_to_{target_key}"
+                    ]
                 else:
-                    logit_scale_idx = logit_scale_dict[f"{target_key}_to_{source_key}"]
+                    logit_scale_idx = logit_scale_dict[
+                        f"{target_key}_to_{source_key}"
+                    ]
 
                 logit_scale = logit_scale_params[logit_scale_idx].exp()
 
                 if f"{target_key}_to_{source_key}_similarity" in logit_dict:
-                    logit_dict[f"{source_key}_to_{target_key}_similarity"] = logit_dict[
+                    logit_dict[
+                        f"{source_key}_to_{target_key}_similarity"
+                    ] = logit_dict[
                         f"{target_key}_to_{source_key}_similarity"
                     ].t()
                 else:
                     logit_dict[f"{source_key}_to_{target_key}_similarity"] = (
-                        torch.matmul(source_value, target_value.t()) * logit_scale
+                        torch.matmul(source_value, target_value.t())
+                        * logit_scale
                     )
 
     return logit_dict

@@ -67,7 +67,7 @@ def get_scripts(
                                 f"optimizer.weight_decay={optimizer_weight_decay} "
                                 f"model.backbone_fine_tunable={backbone_fine_tunable} "
                                 "dataset.max_num_query_images_per_episode=50 "
-                                "dataset.max_num_collection_images_per_episode=10 "
+                                "dataset.max_num_collection_images_per_episode=50 "
                                 "dataset.top_k_percent=25 "
                                 "total_val_steps=100"
                             )
@@ -81,7 +81,11 @@ if __name__ == "__main__":
 
     script_list = get_scripts(
         exp_name=f"debug",
-        model_name_list=["clip-baseline", "clip-with-post-processing-baseline", "cap"],
+        model_name_list=[
+            "clip-baseline",
+            "clip-with-post-processing-baseline",
+            "cap",
+        ],
         pretrained_list=[True, False],
         backbone_fine_tunable_list=[True, False],
         optimizer_lr_list=[1e-5],
@@ -110,6 +114,7 @@ if __name__ == "__main__":
         num_repeat_experiment=10,
         experiment_template=ExperimentTemplate.standard,
         persistent_disk_claim_names_to_mount_dict={"pvc-instait3": "/data/"},
+        num_gpus=2,
     )
 
     exp.generate_spec_files()

@@ -100,7 +100,9 @@ def add_row_to_table(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--bucket_size", type=int, default=1800)
-    parser.add_argument("--data_root", type=str, default="/data/instagram_table/")
+    parser.add_argument(
+        "--data_root", type=str, default="/data/instagram_table/"
+    )
     parser.add_argument("--set_name", type=str)
     args = parser.parse_args()
 
@@ -188,7 +190,10 @@ if __name__ == "__main__":
                     similarity_batch = similarity_batch.detach().cpu().tolist()
 
                 for filepath, similarity, idx, user_name in zip(
-                    filepath_batch, similarity_batch, ids_bucket_batch, user_name_batch
+                    filepath_batch,
+                    similarity_batch,
+                    ids_bucket_batch,
+                    user_name_batch,
                 ):
                     response = add_row_to_table(
                         filepath=list(filepath),

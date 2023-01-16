@@ -70,10 +70,14 @@ class Callback(object):
     ) -> None:
         pass
 
-    def on_batch_start(self, model: nn.Module, batch: Dict, batch_idx: int) -> None:
+    def on_batch_start(
+        self, model: nn.Module, batch: Dict, batch_idx: int
+    ) -> None:
         pass
 
-    def on_batch_end(self, model: nn.Module, batch: Dict, batch_idx: int) -> None:
+    def on_batch_end(
+        self, model: nn.Module, batch: Dict, batch_idx: int
+    ) -> None:
         pass
 
     def on_training_step_start(
@@ -248,11 +252,15 @@ class CallbackHandler(Callback):
                 test_dataloaders,
             )
 
-    def on_batch_start(self, model: nn.Module, batch: Dict, batch_idx: int) -> None:
+    def on_batch_start(
+        self, model: nn.Module, batch: Dict, batch_idx: int
+    ) -> None:
         for callback in self.callbacks:
             callback.on_batch_start(model, batch, batch_idx)
 
-    def on_batch_end(self, model: nn.Module, batch: Dict, batch_idx: int) -> None:
+    def on_batch_end(
+        self, model: nn.Module, batch: Dict, batch_idx: int
+    ) -> None:
         for callback in self.callbacks:
             callback.on_batch_end(model, batch, batch_idx)
 
@@ -362,7 +370,9 @@ class CallbackHandler(Callback):
         checkpoint_path: Path,
     ) -> None:
         for callback in self.callbacks:
-            callback.on_save_checkpoint(model, optimizers, experiment, checkpoint_path)
+            callback.on_save_checkpoint(
+                model, optimizers, experiment, checkpoint_path
+            )
 
     def on_load_checkpoint(
         self,
@@ -372,7 +382,9 @@ class CallbackHandler(Callback):
         checkpoint_path: Path,
     ) -> None:
         for callback in self.callbacks:
-            callback.on_load_checkpoint(model, optimizers, experiment, checkpoint_path)
+            callback.on_load_checkpoint(
+                model, optimizers, experiment, checkpoint_path
+            )
 
 
 class UploadCheckpointToHuggingFaceBackground(threading.Thread):

@@ -69,7 +69,10 @@ def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
     import orjson
     import yaml
 
-    if cfg.download_checkpoint_with_name is not None and cfg.download_latest is True:
+    if (
+        cfg.download_checkpoint_with_name is not None
+        and cfg.download_latest is True
+    ):
         raise ValueError(
             "Cannot use both continue_from_checkpoint_with_name and continue_from_latest"
         )
@@ -124,10 +127,12 @@ def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
                 filename=cfg.download_checkpoint_with_name,
                 repo_type="model",
             )
-            if pathlib.Path(pathlib.Path(cfg.hf_repo_dir) / "checkpoints").exists():
-                pathlib.Path(pathlib.Path(cfg.hf_repo_dir) / "checkpoints").mkdir(
-                    parents=True, exist_ok=True
-                )
+            if pathlib.Path(
+                pathlib.Path(cfg.hf_repo_dir) / "checkpoints"
+            ).exists():
+                pathlib.Path(
+                    pathlib.Path(cfg.hf_repo_dir) / "checkpoints"
+                ).mkdir(parents=True, exist_ok=True)
 
             shutil.copy(
                 pathlib.Path(ckpt_filepath),
@@ -158,10 +163,12 @@ def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
                 repo_type="model",
             )
 
-            if pathlib.Path(pathlib.Path(cfg.hf_repo_dir) / "checkpoints").exists():
-                pathlib.Path(pathlib.Path(cfg.hf_repo_dir) / "checkpoints").mkdir(
-                    parents=True, exist_ok=True
-                )
+            if pathlib.Path(
+                pathlib.Path(cfg.hf_repo_dir) / "checkpoints"
+            ).exists():
+                pathlib.Path(
+                    pathlib.Path(cfg.hf_repo_dir) / "checkpoints"
+                ).mkdir(parents=True, exist_ok=True)
 
             shutil.copy(
                 pathlib.Path(ckpt_filepath),
@@ -171,7 +178,10 @@ def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
             logger.info(
                 f"Downloaded checkpoint from huggingface hub to {cfg.hf_repo_dir}"
             )
-            return pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest.pt", repo_url
+            return (
+                pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest.pt",
+                repo_url,
+            )
         else:
             logger.info(
                 "Download all available checkpoints, if they exist, from the huggingface hub 👨🏻‍💻"
@@ -186,12 +196,16 @@ def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
                 pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest.pt"
             )
 
-            if pathlib.Path(pathlib.Path(cfg.hf_repo_dir) / "checkpoints").exists():
-                pathlib.Path(pathlib.Path(cfg.hf_repo_dir) / "checkpoints").mkdir(
-                    parents=True, exist_ok=True
-                )
+            if pathlib.Path(
+                pathlib.Path(cfg.hf_repo_dir) / "checkpoints"
+            ).exists():
+                pathlib.Path(
+                    pathlib.Path(cfg.hf_repo_dir) / "checkpoints"
+                ).mkdir(parents=True, exist_ok=True)
 
-            shutil.copy(pathlib.Path(ckpt_folderpath), cfg.hf_repo_dir / "checkpoints")
+            shutil.copy(
+                pathlib.Path(ckpt_folderpath), cfg.hf_repo_dir / "checkpoints"
+            )
 
             if latest_checkpoint.exists():
                 logger.info(
@@ -296,7 +310,9 @@ def run(cfg: BaseConfig) -> None:
         model=model,
         trainers=[
             ClassificationTrainer(
-                optimizer=optimizer, scheduler=scheduler, experiment_tracker=wandb
+                optimizer=optimizer,
+                scheduler=scheduler,
+                experiment_tracker=wandb,
             )
         ],
         evaluators=[ClassificationEvaluator(experiment_tracker=wandb)],
