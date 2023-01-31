@@ -8,6 +8,7 @@ import wandb
 from attr import field
 from hydra_zen import instantiate
 from torch.utils.data import DataLoader
+import accelerate
 
 from .decorators import collect_metrics
 from .utils import get_logger
@@ -46,10 +47,20 @@ class ClassificationEvaluator(Evaluator):
         self.epoch_metrics = {}
         self.experiment_tracker = experiment_tracker
 
-    def validation_step(self, model, batch, batch_idx, step_idx, epoch_idx):
+    def validation_step(
+        self,
+        model,
+        batch,
+        batch_idx,
+        step_idx,
+        epoch_idx,
+        accelerator: accelerate.Accelerator = None,
+    ):
         with torch.no_grad():
             model.eval()
-            opt_loss, output_dict = model.step(batch)
+            opt_loss, output_dict = model.forward(
+                batch, accelerator=accelerator, step=True
+            )
             metrics = output_dict["metrics"]
             loss = opt_loss.detach()
 
@@ -64,10 +75,19 @@ class ClassificationEvaluator(Evaluator):
             metrics={"accuracy": metrics["accuracy"], "loss": loss},
         )
 
-    def test_step(self, model, batch, batch_idx, step_idx):
+    def test_step(
+        self,
+        model,
+        batch,
+        batch_idx,
+        step_idx,
+        accelerator: accelerate.Accelerator = None,
+    ):
         with torch.no_grad():
             model.eval()
-            opt_loss, output_dict = model.step(batch)
+            opt_loss, output_dict = model.forward(
+                batch, accelerator=accelerator, step=True
+            )
             metrics = output_dict["metrics"]
             loss = opt_loss.detach()
 

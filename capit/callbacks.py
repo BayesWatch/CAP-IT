@@ -398,9 +398,9 @@ class UploadCheckpointToHuggingFaceBackground(threading.Thread):
         self.hf_api = HfApi()
 
     def run(self):
-        self.hf_api.upload_file(
+        self.hf_api.upload_folder(
             repo_id=f"{self.repo_owner}/{self.repo_name}",
-            path_or_fileobj=self.checkpoint_path.as_posix(),
+            folder_path=self.checkpoint_path,
             path_in_repo=f"checkpoints/{self.checkpoint_path.name}",
         )
 

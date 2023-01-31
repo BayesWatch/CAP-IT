@@ -23,26 +23,42 @@ def get_scripts(
                 for optimizer_lr in optimizer_lr_list:
                     for optimizer_weight_decay in optimizer_weight_decay_list:
                         current_script_text = None
-                        if model_name == "clip-baseline":
-                            name = f"fp32-{exp_name}-top25-{model_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay}"
-                            current_script_text = (
-                                "/opt/conda/envs/main/bin/accelerate-launch "
-                                "--gradient_accumulation_steps=25 "
-                                "/app/capit/run.py "
-                                f"exp_name={name} "
-                                f"model={model_name} "
-                                f"model.pretrained={pretrained} "
-                                f"optimizer.lr={optimizer_lr} "
-                                f"optimizer.weight_decay={optimizer_weight_decay} "
-                                "dataset.max_num_query_images_per_episode=50 "
-                                "dataset.top_k_percent=25 total_train_steps=100000 "
-                                "total_val_steps=100"
-                            )
-                        if model_name == "clip-with-post-processing-baseline":
+                        # if model_name == "clip-baseline":
+                        #     name = f"fp32-{exp_name}-top25-{model_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay}"
+                        #     current_script_text = (
+                        #         "/opt/conda/envs/main/bin/accelerate-launch "
+                        #         "--gradient_accumulati/siteon_steps=25 "
+                        #         "/app/capit/run.py "
+                        #         f"exp_name={name} "
+                        #         f"model={model_name} "
+                        #         f"model.pretrained={pretrained} "
+                        #         f"optimizer.lr={optimizer_lr} "
+                        #         f"optimizer.weight_decay={optimizer_weight_decay} "
+                        #         "dataset.max_num_query_images_per_episode=50 "
+                        #         "dataset.top_k_percent=25 total_train_steps=100000 "
+                        #         "total_val_steps=100"
+                        #     )
+                        # if model_name == "clip-with-post-processing-baseline":
+                        #     name = f"fp32-{exp_name}-top25-{model_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay}-{backbone_fine_tunable}"
+                        #     current_script_text = (
+                        #         "/opt/conda/envs/main/bin/accelerate-launch "
+                        #         "--gradient_accumulation_steps=25 "
+                        #         "/app/capit/run.py "
+                        #         f"exp_name={name} "
+                        #         f"model={model_name} "
+                        #         f"model.pretrained={pretrained} "
+                        #         f"optimizer.lr={optimizer_lr} "
+                        #         f"optimizer.weight_decay={optimizer_weight_decay} "
+                        #         f"model.backbone_fine_tunable={backbone_fine_tunable} "
+                        #         "dataset.max_num_query_images_per_episode=50 "
+                        #         "dataset.top_k_percent=25 total_train_steps=100000 "
+                        #         "total_val_steps=100"
+                        #     )
+                        if model_name == "cap":
                             name = f"fp32-{exp_name}-top25-{model_name}-{pretrained}-{optimizer_lr}-{optimizer_weight_decay}-{backbone_fine_tunable}"
                             current_script_text = (
                                 "/opt/conda/envs/main/bin/accelerate-launch "
-                                "--gradient_accumulation_steps=25 "
+                                "--gradient_accumulation_steps=25 --multi_gpu"
                                 "/app/capit/run.py "
                                 f"exp_name={name} "
                                 f"model={model_name} "
@@ -51,10 +67,10 @@ def get_scripts(
                                 f"optimizer.weight_decay={optimizer_weight_decay} "
                                 f"model.backbone_fine_tunable={backbone_fine_tunable} "
                                 "dataset.max_num_query_images_per_episode=50 "
+                                "dataset.max_num_collection_images_per_episode=50 "
                                 "dataset.top_k_percent=25 total_train_steps=100000 "
                                 "total_val_steps=100"
                             )
-
                         if current_script_text is not None:
                             script_list.add(current_script_text)
     return list(script_list)
@@ -98,7 +114,7 @@ if __name__ == "__main__":
         num_repeat_experiment=10,
         experiment_template=ExperimentTemplate.standard,
         persistent_disk_claim_names_to_mount_dict={"pvc-instait3": "/data/"},
-        num_gpus=1,
+        num_gpus=2,
     )
 
     exp.generate_spec_files()

@@ -2,6 +2,7 @@ import copy
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
+import pathlib
 from tabnanny import check
 from typing import Any, Dict, List, Optional, Union
 
@@ -9,6 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from accelerate import Accelerator
+from accelerate import DistributedDataParallelKwargs
 from mlproject.callbacks import Callback, CallbackHandler, Interval
 from mlproject.evaluators import ClassificationEvaluator, Evaluator
 from mlproject.trainers import ClassificationTrainer, Trainer
@@ -140,28 +142,12 @@ class Learner(nn.Module):
             test_dataloaders=self.test_dataloaders,
         )
 
-        if isinstance(resume, str):
-            checkpoint_path = Path(resume)
-            if not checkpoint_path.exists():
-                raise ValueError(
-                    f"Checkpoint path {checkpoint_path} does not exist, please check your resume= argument"
-                )
-            self.load_checkpoint(checkpoint_path=checkpoint_path)
-
-        elif isinstance(resume, Path):
-            self.load_checkpoint(checkpoint_path=resume)
-
-        elif resume is True:
-            checkpoint_path = Path(self.checkpoints_dir / "latest.pt")
-            if not checkpoint_path.exists():
-                logger.info(
-                    f"Checkpoint path {checkpoint_path} does not exist, "
-                    f"starting from scratch :start:"
-                )
-            else:
-                self.load_checkpoint(checkpoint_path=checkpoint_path)
-
-        self.accelerator = Accelerator()
+        # use if you want to debug unused parameter errors in DDP
+        self.accelerator = Accelerator(
+            kwargs_handlers=[
+                DistributedDataParallelKwargs(find_unused_parameters=True)
+            ]
+        )
 
         self.model = self.model.to(self.accelerator.device)
         self.model, self.train_dataloader = self.accelerator.prepare(
@@ -191,6 +177,27 @@ class Learner(nn.Module):
                 test_dataloader = self.accelerator.prepare(test_dataloader)
                 self.test_dataloaders.append(test_dataloader)
 
+        if isinstance(resume, str):
+            checkpoint_path = Path(resume)
+            if not checkpoint_path.exists():
+                raise ValueError(
+                    f"Checkpoint path {checkpoint_path} does not exist, please check your resume= argument"
+                )
+            self.load_checkpoint(checkpoint_path=checkpoint_path)
+
+        elif isinstance(resume, Path):
+            self.load_checkpoint(checkpoint_path=resume)
+
+        elif resume is True:
+            checkpoint_path = Path(self.checkpoints_dir / "latest")
+            if not checkpoint_path.exists():
+                logger.info(
+                    f"Checkpoint path {checkpoint_path} does not exist, "
+                    f"starting from scratch :start:"
+                )
+            else:
+                self.load_checkpoint(checkpoint_path=checkpoint_path)
+
         if print_model_parameters:
 
             for key, value in self.named_parameters():
@@ -202,7 +209,7 @@ class Learner(nn.Module):
         self.train()
 
     def forward(self, x):
-        return self.model(x)
+        return self.model(x, accelerator=self.accelerator)
 
     def __repr__(self):
         attributes = "\n".join(
@@ -241,6 +248,7 @@ class Learner(nn.Module):
                 batch_idx=batch_idx,
                 step_idx=self.step_idx,
                 epoch_idx=self.epoch_idx,
+                accelerator=self.accelerator,
             )
 
         self.callback_handler.on_batch_end(model, batch, batch_idx)
@@ -257,6 +265,7 @@ class Learner(nn.Module):
                 batch_idx=batch_idx,
                 step_idx=self.step_idx,
                 epoch_idx=self.epoch_idx,
+                accelerator=self.accelerator,
             )
 
         self.callback_handler.on_batch_end(model, batch, batch_idx)
@@ -441,8 +450,14 @@ class Learner(nn.Module):
                         ):
                             self._validation_loop()
 
-                        if self.step_idx % self.checkpoint_every_n_steps == 0:
-                            self.save_checkpoint()
+                        if (
+                            self.step_idx % self.checkpoint_every_n_steps == 0
+                            and self.step_idx > 0
+                        ):
+                            self.save_checkpoint(
+                                checkpoint_name=f"ckpt_{self.step_idx}"
+                            )
+                            self.save_checkpoint(checkpoint_name="latest")
 
                         self.step_idx += 1
 
@@ -455,78 +470,50 @@ class Learner(nn.Module):
 
             self.end_training(train_dataloader=train_dataloader)
 
-    def save_checkpoint(self):
+    def save_checkpoint(
+        self,
+        checkpoint_name: str,
+    ):
+        ckpt_save_path = self.checkpoints_dir / checkpoint_name
+
+        if not ckpt_save_path.exists():
+            ckpt_save_path.mkdir(parents=True)
 
         experiment_hyperparameters = dict(
             step_idx=self.step_idx, epoch_idx=self.epoch_idx
         )
-
-        optimizers: List[torch.optim.Optimizer] = [
-            list(trainer.get_optimizer())
-            if isinstance(trainer.get_optimizer(), List)
-            else trainer.get_optimizer()
-            for trainer in self.trainers
-        ]
-
-        optimizer_states = []
-        for item in optimizers:
-            if isinstance(item, List):
-                optimizer_states.append(
-                    [optimizer.state_dict() for optimizer in item]
-                )
-            else:
-                optimizer_states.append(item.state_dict())
-
-        model = self.model.state_dict()
-
-        state = dict(
-            exp=experiment_hyperparameters,
-            optimizers=optimizer_states,
-            model=model,
+        torch.save(
+            obj=experiment_hyperparameters,
+            f=ckpt_save_path / "trainer_state.pt",
         )
-
-        ckpt_save_path = self.checkpoints_dir / f"ckpt_{self.step_idx}.pt"
-        torch.save(obj=state, f=ckpt_save_path)
+        self.accelerator.save_state(ckpt_save_path)
 
         self.callback_handler.on_save_checkpoint(
-            model=model,
-            optimizers=optimizer_states,
+            model=self.model,
+            optimizers=[trainer.optimizer for trainer in self.trainers],
             experiment=self,
             checkpoint_path=ckpt_save_path,
         )
 
-        last_ckpt_save_path = self.checkpoints_dir / "latest.pt"
-        torch.save(obj=state, f=last_ckpt_save_path)
+        return ckpt_save_path
 
-        self.callback_handler.on_save_checkpoint(
-            model=model,
-            optimizers=optimizer_states,
-            experiment=self,
-            checkpoint_path=last_ckpt_save_path,
-        )
-
-    def load_checkpoint(self, checkpoint_path: Union[str, Path]):
+    def load_checkpoint(
+        self,
+        checkpoint_path: Union[str, Path],
+    ):
         checkpoint_path = (
             checkpoint_path
             if isinstance(checkpoint_path, Path)
             else Path(checkpoint_path)
         )
         logger.info(f"Loading checkpoint from {checkpoint_path}")
-        state = torch.load(checkpoint_path)
-        self.model.load_state_dict(state["model"])
-        self.step_idx = state["exp"]["step_idx"]
-        self.epoch_idx = state["exp"]["epoch_idx"]
+        trainer_state = torch.load(
+            pathlib.Path(checkpoint_path) / "trainer_state.pt"
+        )
+        self.step_idx = trainer_state["step_idx"]
+        self.epoch_idx = trainer_state["epoch_idx"]
 
-        for idx, (trainer, optimizer_state) in enumerate(
-            zip(self.trainers, state["optimizers"])
-        ):
-            if isinstance(optimizer_state, List):
-                for optimizer, state in zip(
-                    trainer.get_optimizer(), optimizer_state
-                ):
-                    optimizer.load_state_dict(state)
-            else:
-                trainer.get_optimizer().load_state_dict(optimizer_state)
+        self.accelerator.load_state(checkpoint_path)
 
         self.callback_handler.on_load_checkpoint(
             model=self.model,

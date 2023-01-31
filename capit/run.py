@@ -79,6 +79,9 @@ def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
 
     repo_path = cfg.repo_path
     login(token=os.environ["HF_TOKEN"], add_to_git_credential=True)
+    print(
+        f"Logged in to huggingface with token {os.environ['HF_TOKEN']}, creating repo {repo_path}"
+    )
     repo_url = create_repo(repo_path, repo_type="model", exist_ok=True)
 
     logger.info(f"Created repo {repo_path}, {cfg.hf_repo_dir}")
@@ -154,32 +157,86 @@ def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
                 "Download latest checkpoint, if it exists, from the huggingface hub 👨🏻‍💻"
             )
 
-            ckpt_filepath = hf_hub_download(
+            optimizer_filepath = hf_hub_download(
                 repo_id=repo_path,
                 cache_dir=pathlib.Path(cfg.hf_repo_dir),
                 resume_download=True,
-                subfolder="checkpoints",
-                filename="latest.pt",
+                subfolder="checkpoints/latest",
+                filename="optimizer.bin",
                 repo_type="model",
             )
 
-            if pathlib.Path(
-                pathlib.Path(cfg.hf_repo_dir) / "checkpoints"
+            model_filepath = hf_hub_download(
+                repo_id=repo_path,
+                cache_dir=pathlib.Path(cfg.hf_repo_dir),
+                resume_download=True,
+                subfolder="checkpoints/latest",
+                filename="pytorch_model.bin",
+                repo_type="model",
+            )
+
+            random_states_filepath = hf_hub_download(
+                repo_id=repo_path,
+                cache_dir=pathlib.Path(cfg.hf_repo_dir),
+                resume_download=True,
+                subfolder="checkpoints/latest",
+                filename="random_states_0.pkl",
+                repo_type="model",
+            )
+
+            trainer_state_filepath = hf_hub_download(
+                repo_id=repo_path,
+                cache_dir=pathlib.Path(cfg.hf_repo_dir),
+                resume_download=True,
+                subfolder="checkpoints/latest",
+                filename="trainer_state.pt",
+                repo_type="model",
+            )
+
+            if not pathlib.Path(
+                pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest"
             ).exists():
                 pathlib.Path(
-                    pathlib.Path(cfg.hf_repo_dir) / "checkpoints"
+                    pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest"
                 ).mkdir(parents=True, exist_ok=True)
 
             shutil.copy(
-                pathlib.Path(ckpt_filepath),
-                pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest.pt",
+                pathlib.Path(optimizer_filepath),
+                pathlib.Path(cfg.hf_repo_dir)
+                / "checkpoints"
+                / "latest"
+                / "optimizer.bin",
+            )
+
+            shutil.copy(
+                pathlib.Path(model_filepath),
+                pathlib.Path(cfg.hf_repo_dir)
+                / "checkpoints"
+                / "latest"
+                / "pytorch_model.bin",
+            )
+
+            shutil.copy(
+                pathlib.Path(random_states_filepath),
+                pathlib.Path(cfg.hf_repo_dir)
+                / "checkpoints"
+                / "latest"
+                / "random_states_0.pkl",
+            )
+
+            shutil.copy(
+                pathlib.Path(trainer_state_filepath),
+                pathlib.Path(cfg.hf_repo_dir)
+                / "checkpoints"
+                / "latest"
+                / "trainer_state.pt",
             )
 
             logger.info(
                 f"Downloaded checkpoint from huggingface hub to {cfg.hf_repo_dir}"
             )
             return (
-                pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest.pt",
+                pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest",
                 repo_url,
             )
         else:
@@ -193,7 +250,7 @@ def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
                 resume_download=True,
             )
             latest_checkpoint = (
-                pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest.pt"
+                pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest"
             )
 
             if pathlib.Path(
@@ -211,12 +268,12 @@ def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
                 logger.info(
                     f"Downloaded checkpoint from huggingface hub to {latest_checkpoint}"
                 )
-            return cfg.hf_repo_dir / "checkpoints" / "latest.pt"
+            return cfg.hf_repo_dir / "checkpoints" / "latest"
         return None, repo_url
 
     except Exception as e:
         logger.exception(
-            f"Could not download checkpoint_latest.pt from huggingface hub: {e}"
+            f"Could not download latest checkpoint from huggingface hub: {e}"
         )
         return None, repo_url
 

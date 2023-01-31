@@ -3,8 +3,10 @@ FROM ghcr.io/bayeswatch/minimal-ml-template:latest
 RUN mamba update -c conda-forge ffmpeg starship -y
 RUN mamba update pytorch torchvision torchaudio pytorch-cuda=11.6 -c pytorch -c nvidia
 RUN mamba update -c huggingface transformers
-RUN echo y | pip install itables torchtyping orjson tensorflow tensorflow-datasets gradio ipywidgets
+RUN echo y | pip install itables torchtyping orjson gradio ipywidgets
 RUN echo y | pip install git+https://github.com/BayesWatch/bwatchcompute.git
+RUN echo y | pip uninstall tensorflow tensorflow-datasets
+RUN apt install glances -y
 
 RUN rm -rf /app
 ADD capit/ /app/capit/

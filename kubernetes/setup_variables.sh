@@ -1,12 +1,12 @@
 #!/bin/bash
-export WANDB_API_KEY="03f97dc1ae484a463ef95ba2e03fb12f7eeddd85"
+export WANDB_API_KEY="821661c6ee1657a2717093701ab76574ae1a9be0"
 export WANDB_ENTITY=machinelearningbrewery
-export WANDB_PROJECT=capit-v2
+export WANDB_PROJECT=capit-debug-4
 
-export HF_USERNAME="evolvingfungus"
-export HF_TOKEN=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
+export HF_USERNAME="evolving-eukaryote"
+export HF_TOKEN=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
 
-export TOKENIZERS_PARALLELISM=false
+export TOKENIZERS_PARALLELISM=true
 
 export PROJECT_DIR=/app/
 export EXPERIMENTS_DIR=/run/experiments
@@ -19,5 +19,5 @@ export CLUSTER_NAME=spot-gpu-cluster-1
 export CLUSTER_ZONE=us-central1-a
 export CLUSTER_PROJECT=tali-multi-modal
 
-export EXPERIMENT_NAME_PREFIX="debug"
+export EXPERIMENT_NAME_PREFIX="capit-v3"
 export DOCKER_IMAGE_PATH="ghcr.io/bayeswatch/capit:latest"

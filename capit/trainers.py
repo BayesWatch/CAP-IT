@@ -71,9 +71,15 @@ class ClassificationTrainer(Trainer):
     ) -> TrainerOutput:
         model.train()
         self.optimizer.zero_grad()
-        opt_loss, output_dict = model.step(batch)
+        opt_loss, output_dict = model.forward(
+            batch, accelerator=accelerator, step=True
+        )
         loss = opt_loss.detach()
         accelerator.backward(loss=opt_loss)
+        # for name, param in model.named_parameters():
+        #     if param.grad is None:
+        #         print(name, param.shape)
+
         self.optimizer.step()
 
         if self.scheduler is not None:

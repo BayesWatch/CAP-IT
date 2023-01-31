@@ -7,16 +7,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from accelerate import Accelerator
+
 from rich import print
 from torchtyping import TensorType
 from transformers import CLIPModel, CLIPProcessor
 from transformers.models.clip.modeling_clip import CLIPOutput, contrastive_loss
-from capit.core.data.datasets import ImageTextRetrievalInput
-from capit.core.models.baselines import CLIPImageTextModel
-
-from capit.core.utils import get_logger
-from capit.decorators import configurable
-
 from huggingface_hub import (
     Repository,
     create_repo,
@@ -24,6 +20,13 @@ from huggingface_hub import (
     login,
     snapshot_download,
 )
+
+
+from capit.core.data.datasets import ImageTextRetrievalInput
+from capit.core.models.baselines import CLIPImageTextModel
+from capit.core.utils import get_logger
+from capit.decorators import configurable
+
 
 log = get_logger(__name__)
 
@@ -70,14 +73,16 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
         else:
             return self.post_processing_module.parameters()
 
-    def named_parameters(self) -> Iterator[Tuple[str, torch.Tensor]]:
+    def named_parameters(
+        self, recurse: bool = True
+    ) -> Iterator[Tuple[str, torch.Tensor]]:
         if self.fine_tunable:
-            return list(self.model.named_parameters()) + list(
-                self.post_processing_module.named_parameters()
+            return list(self.model.named_parameters(recurse=recurse)) + list(
+                self.post_processing_module.named_parameters(recurse=recurse)
             )
 
         else:
-            return self.post_processing_module.named_parameters()
+            return self.post_processing_module.named_parameters(recurse=recurse)
 
     def build_post_processing_module(self, name: str, x: torch.Tensor):
         transformer_encoder = nn.TransformerEncoderLayer(
@@ -104,16 +109,16 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
         text_embedding_size: int,
         image_embedding_size: int,
     ):
-        transformer_encoder = nn.TransformerEncoderLayer(
-            d_model=x.shape[2], nhead=8, dim_feedforward=2048
-        )
-        encoder_norm = nn.LayerNorm(x.shape[2])
-        self.post_processing_module[
-            f"{name}_transformer"
-        ] = nn.TransformerEncoder(
-            encoder_layer=transformer_encoder, num_layers=1, norm=encoder_norm
-        )
-        x = self.post_processing_module[f"{name}_transformer"](x)
+        # transformer_encoder = nn.TransformerEncoderLayer(
+        #     d_model=x.shape[2], nhead=8, dim_feedforward=2048
+        # )
+        # encoder_norm = nn.LayerNorm(x.shape[2])
+        # self.post_processing_module[
+        #     f"{name}_transformer"
+        # ] = nn.TransformerEncoder(
+        #     encoder_layer=transformer_encoder, num_layers=1, norm=encoder_norm
+        # )
+        # x = self.post_processing_module[f"{name}_transformer"](x)
         x = x.mean(dim=1)
         self.post_processing_module[f"{name}-text_output"] = nn.Linear(
             x.shape[1], text_embedding_size
@@ -132,14 +137,18 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
         return x
 
     def apply_cap_module(self, x: torch.Tensor, name: str):
-        x = self.post_processing_module[f"{name}_transformer"](x)
+        # x = self.post_processing_module[f"{name}_transformer"](x)
         x = x.mean(dim=1)
 
         out_text = self.post_processing_module[f"{name}-text_output"](x)
         out_image = self.post_processing_module[f"{name}-image_output"](x)
         return {"text": out_text, "image": out_image}
 
-    def build(self, batch: ImageTextRetrievalInput):
+    def build(
+        self,
+        batch: ImageTextRetrievalInput,
+        accelerator: Optional[Accelerator] = None,
+    ):
         log.info(f"Building model {self.__class__.__name__}")
         image = batch.target_image[0]
         challenge_images = batch.challenge_images[0][0].unsqueeze(0)
@@ -203,12 +212,12 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
         text_output = self.build_post_processing_module(
             name="text", x=text_hidden_token
         )
+
         self.is_built = True
         log.info(
             f"Built {self.__class__.__name__}, \
                 image output: {image_output.shape}, text output: {text_output.shape}"
         )
-        return self.step(batch)
 
     def preprocess_image(self, image: torch.Tensor):
         if isinstance(image, torch.Tensor):
@@ -262,15 +271,18 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
 
     def forward(
         self,
-        challenge_images: TensorType[
-            "batch_size", "channel", "height", "width"
-        ],
-        collection_images: TensorType[
-            "batch_size", "channel", "height", "width"
-        ],
-        prompt_text: List[str],
+        batch: ImageTextRetrievalInput,
+        accelerator: Accelerator = None,
+        step: bool = False,
         **kwargs,
     ) -> CLIPOutput:
+        image = batch.target_image[0]
+        challenge_images = batch.challenge_images[0]
+        collection_images = batch.collection_images[0]
+        challenge_images = torch.cat(
+            [image.unsqueeze(0), challenge_images], dim=0
+        )
+        prompt_text = batch.target_text[0]
 
         challenge_images = self.preprocess_image(challenge_images)
         collection_images = self.preprocess_image(collection_images)
@@ -327,12 +339,25 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
             name="text", x=text_hidden_token
         )
 
+        if accelerator is not None:
+            image_output = accelerator.gather(image_output)
+            text_output = accelerator.gather(text_output)
+
         similarity = (
             torch.matmul(text_output, image_output.t()) * self.model.logit_scale
         )
 
         loss = contrastive_loss(similarity)
 
+        if step:
+            return self.compute_loss_and_accuracy(
+                CLIPModelOutput(
+                    logits_per_image=similarity,
+                    image_embeds=image_output,
+                    text_embeds=text_output,
+                    loss=loss,
+                )
+            )
         return CLIPModelOutput(
             logits_per_image=similarity,
             image_embeds=image_output,
@@ -340,21 +365,7 @@ class CAPCLIPImageTextModel(CLIPImageTextModel):
             loss=loss,
         )
 
-    def step(self, batch: ImageTextRetrievalInput):
-
-        image = batch.target_image[0]
-        challenge_images = batch.challenge_images[0]
-        collection_images = batch.collection_images[0]
-        challenge_images = torch.cat(
-            [image.unsqueeze(0), challenge_images], dim=0
-        )
-        prompt_text = batch.target_text[0]
-
-        clip_output = self.forward(
-            challenge_images=challenge_images,
-            prompt_text=prompt_text,
-            collection_images=collection_images,
-        )
+    def compute_loss_and_accuracy(self, clip_output: CLIPModelOutput):
 
         accuracy = (
             (clip_output.logits_per_image.argmax(dim=-1) == 0).float().mean()
@@ -383,6 +394,9 @@ if __name__ == "__main__":
     model = CAPCLIPImageTextModel(
         model_name_or_path=model_name_or_path, pretrained=True
     )
-    model.build(batch=dummy_inputs)
-    out = model.step(batch=dummy_inputs)
-    print(out)
+    accelerator = Accelerator()
+    model.build(batch=dummy_inputs, accelerator=accelerator)
+
+    model, dummy_inputs = accelerator.prepare(model, dummy_inputs)
+    out = model.forward(batch=dummy_inputs, accelerator=accelerator, step=True)
+    # print(out)

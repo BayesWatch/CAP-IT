@@ -15,7 +15,7 @@ from capit.core.data.datasets import ImageTextRetrievalInput
 
 from capit.core.utils import get_logger
 from capit.decorators import configurable
-
+import accelerate
 from huggingface_hub import (
     Repository,
     create_repo,
@@ -62,7 +62,11 @@ class CLIPImageTextModel(nn.Module):
         ]
         self.is_built = False
 
-    def build(self, batch: ImageTextRetrievalInput):
+    def build(
+        self,
+        batch: ImageTextRetrievalInput,
+        accelerator: Optional[accelerate.Accelerator] = None,
+    ):
         log.info(f"Building {self.__class__.__name__} module")
 
         image = batch.target_image[0]
@@ -91,8 +95,6 @@ class CLIPImageTextModel(nn.Module):
             f"Built {self.__class__.__name__} \
                 image output: {image_hidden_token.shape}, text output: {text_hidden_token.shape}"
         )
-
-        return self.step(batch)
 
     def preprocess_image(
         self, image: TensorType["batch_size", "channel", "height", "width"]
@@ -144,14 +146,18 @@ class CLIPImageTextModel(nn.Module):
 
     def forward(
         self,
-        challenge_images: TensorType[
-            "batch_size", "channel", "height", "width"
-        ],
-        prompt_text: List[str],
+        batch: ImageTextRetrievalInput,
+        step: bool = False,
+        accelerator: Optional[accelerate.Accelerator] = None,
         **kwargs,
     ) -> CLIPOutput:
-        challenge_images = self.preprocess_image(challenge_images)
-        prompt_text = self.preprocess_text(prompt_text)
+        image = batch.target_image[0]
+        challenge_images = batch.challenge_images[0]
+        images = torch.cat([image.unsqueeze(0), challenge_images], dim=0)
+        text = batch.target_text[0]
+
+        challenge_images = self.preprocess_image(images)
+        prompt_text = self.preprocess_text(text)
 
         if len(prompt_text.shape) == 1:
             prompt_text = prompt_text.unsqueeze(0)
@@ -163,20 +169,33 @@ class CLIPImageTextModel(nn.Module):
             return_loss=False,
         )
 
-        image_hidden_token = clip_output.image_embeds
-        text_hidden_token = clip_output.text_embeds
+        image_output = clip_output.image_embeds
+        text_output = clip_output.text_embeds
+
+        if accelerator is not None:
+            image_output = accelerator.gather(image_output)
+            text_output = accelerator.gather(text_output)
 
         similarity = (
-            torch.matmul(text_hidden_token, image_hidden_token.t())
+            torch.matmul(text_output, image_output.t())
             * self.model.logit_scale
         )
 
         loss = contrastive_loss(similarity)
 
+        if step:
+            return self.compute_loss_and_accuracy(
+                CLIPModelOutput(
+                    logits_per_image=similarity,
+                    image_embeds=image_output,
+                    text_embeds=text_output,
+                    loss=loss,
+                )
+            )
         return CLIPModelOutput(
             logits_per_image=similarity,
-            image_embeds=image_hidden_token,
-            text_embeds=text_hidden_token,
+            image_embeds=image_output,
+            text_embeds=text_output,
             loss=loss,
         )
 
@@ -198,14 +217,11 @@ class CLIPImageTextModel(nn.Module):
         logit_scale = self.model.logit_scale.exp()
         return torch.sum(text_embeds * image_embeds, dim=1) * logit_scale
 
-    def step(self, batch: ImageTextRetrievalInput):
-
-        image = batch.target_image[0]
-        challenge_images = batch.challenge_images[0]
-        images = torch.cat([image.unsqueeze(0), challenge_images], dim=0)
-        text = batch.target_text[0]
-
-        clip_output = self.forward(challenge_images=images, prompt_text=text)
+    def compute_loss_and_accuracy(
+        self,
+        clip_output: CLIPModelOutput,
+        accelerator: accelerate.Accelerator = None,
+    ):
 
         accuracy = (
             (clip_output.logits_per_image.argmax(dim=-1) == 0).float().mean()
@@ -267,14 +283,16 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
         else:
             return self.post_processing_module.parameters()
 
-    def named_parameters(self) -> Iterator[Tuple[str, torch.Tensor]]:
+    def named_parameters(
+        self, recurse: bool = True
+    ) -> Iterator[Tuple[str, torch.Tensor]]:
         if self.fine_tunable:
-            return list(self.model.named_parameters()) + list(
-                self.post_processing_module.named_parameters()
+            return list(self.model.named_parameters(recurse=recurse)) + list(
+                self.post_processing_module.named_parameters(recurse=recurse)
             )
 
         else:
-            return self.post_processing_module.named_parameters()
+            return self.post_processing_module.named_parameters(recurse=recurse)
 
     def build_post_processing_module(self, name: str, x: torch.Tensor):
         transformer_encoder = nn.TransformerEncoderLayer(
@@ -300,7 +318,7 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
         x = self.post_processing_module[f"{name}_output"](x)
         return x
 
-    def build(self, batch: ImageTextRetrievalInput):
+    def build(self, batch: ImageTextRetrievalInput, **kwargs):
         log.info(f"Building model {self.__class__.__name__}")
         image = batch.target_image[0]
         challenge_images = batch.challenge_images[0]
@@ -334,7 +352,6 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
             f"Built {self.__class__.__name__}, \
                 image output: {image_output.shape}, text output: {text_output.shape}"
         )
-        return self.step(batch)
 
     def preprocess_image(self, image: torch.Tensor):
         if isinstance(image, torch.Tensor):
@@ -388,15 +405,19 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
 
     def forward(
         self,
-        challenge_images: TensorType[
-            "batch_size", "channel", "height", "width"
-        ],
-        prompt_text: List[str],
+        batch: ImageTextRetrievalInput,
+        step: bool = False,
+        accelerator: Optional[accelerate.Accelerator] = None,
         **kwargs,
     ) -> CLIPOutput:
 
-        challenge_images = self.preprocess_image(challenge_images)
-        prompt_text = self.preprocess_text(prompt_text)
+        image = batch.target_image[0]
+        challenge_images = batch.challenge_images[0]
+        images = torch.cat([image.unsqueeze(0), challenge_images], dim=0)
+        text = batch.target_text[0]
+
+        challenge_images = self.preprocess_image(images)
+        prompt_text = self.preprocess_text(text)
 
         if len(prompt_text.shape) == 1:
             prompt_text = prompt_text.unsqueeze(0)
@@ -418,12 +439,25 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
             name="text", x=text_hidden_token
         )
 
+        if accelerator is not None:
+            image_output = accelerator.gather(image_output)
+            text_output = accelerator.gather(text_output)
+
         similarity = (
             torch.matmul(text_output, image_output.t()) * self.model.logit_scale
         )
 
         loss = contrastive_loss(similarity)
 
+        if step:
+            return self.compute_loss_and_accuracy(
+                CLIPModelOutput(
+                    logits_per_image=similarity,
+                    image_embeds=image_output,
+                    text_embeds=text_output,
+                    loss=loss,
+                )
+            )
         return CLIPModelOutput(
             logits_per_image=similarity,
             image_embeds=image_output,
@@ -438,19 +472,37 @@ if __name__ == "__main__":
     dummy_inputs = ImageTextRetrievalInput(
         target_image=torch.rand(1, 3, 224, 224),
         challenge_images=torch.rand(1, 10, 3, 224, 224),
+        challenge_paths=["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"],
         target_text=["a picture of a cat"],
+        collection_images=torch.rand(1, 10, 3, 224, 224),
+        collection_paths=["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"],
     )
     model_name_or_path = "openai/clip-vit-large-patch14"
     model = CLIPImageTextModel(
         model_name_or_path=model_name_or_path, pretrained=True
     )
-    model.build(batch=dummy_inputs)
-    out = model.step(batch=dummy_inputs, batch_idx=0)
-    print(out)
+    accelerator = accelerate.Accelerator()
+    model.build(batch=dummy_inputs, accelerator=accelerator)
 
+    model, dummy_inputs = accelerator.prepare(model, dummy_inputs)
+    out = model.forward(batch=dummy_inputs, accelerator=accelerator, step=True)
+    # print(out)
+
+    dummy_inputs = ImageTextRetrievalInput(
+        target_image=torch.rand(1, 3, 224, 224),
+        challenge_images=torch.rand(1, 10, 3, 224, 224),
+        challenge_paths=["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"],
+        target_text=["a picture of a cat"],
+        collection_images=torch.rand(1, 10, 3, 224, 224),
+        collection_paths=["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"],
+    )
+    model_name_or_path = "openai/clip-vit-large-patch14"
     model = CLIPWithPostProcessingImageTextModel(
         model_name_or_path=model_name_or_path, pretrained=True
     )
-    model.build(batch=dummy_inputs)
-    out = model.step(batch=dummy_inputs, batch_idx=0)
-    print(out)
+    accelerator = accelerate.Accelerator()
+    model.build(batch=dummy_inputs, accelerator=accelerator)
+
+    model, dummy_inputs = accelerator.prepare(model, dummy_inputs)
+    out = model.forward(batch=dummy_inputs, accelerator=accelerator, step=True)
+    # print(out)
