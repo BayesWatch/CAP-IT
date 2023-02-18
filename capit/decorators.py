@@ -4,7 +4,6 @@ from typing import Any, Callable
 
 import torch
 from hydra_zen import builds, instantiate
-from prometheus_client import Metric
 
 
 def configurable(func: Callable) -> Callable:

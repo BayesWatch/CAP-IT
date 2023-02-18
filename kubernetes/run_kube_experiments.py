@@ -64,14 +64,13 @@ if __name__ == "__main__":
     from bwatchcompute.kubernetes import Job, ExperimentTemplate
 
     script_list = get_scripts(
-        exp_name=f"debug",
+        exp_name=f"multi-gpu",
         model_name_list=[
             "clip-baseline",
             "clip-with-post-processing-baseline",
-            "cap",
         ],
-        pretrained_list=[True, False],
-        backbone_fine_tunable_list=[True, False],
+        pretrained_list=[True],
+        backbone_fine_tunable_list=[True],
         optimizer_lr_list=[1e-5],
         optimizer_weight_decay_list=[0.0],
     )

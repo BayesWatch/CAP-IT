@@ -11,10 +11,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from accelerate import Accelerator
 from accelerate import DistributedDataParallelKwargs
-from mlproject.callbacks import Callback, CallbackHandler, Interval
-from mlproject.evaluators import ClassificationEvaluator, Evaluator
-from mlproject.trainers import ClassificationTrainer, Trainer
-from mlproject.utils import get_logger
+from capit.callbacks import Callback, CallbackHandler, Interval
+from capit.evaluators import ClassificationEvaluator, Evaluator
+from capit.trainers import ClassificationTrainer, Trainer
+from capit.utils import get_logger
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -199,7 +199,6 @@ class Learner(nn.Module):
                 self.load_checkpoint(checkpoint_path=checkpoint_path)
 
         if print_model_parameters:
-
             for key, value in self.named_parameters():
                 logger.info(
                     f"Parameter {key} -> {value.shape} requires grad {value.requires_grad}"
@@ -368,7 +367,6 @@ class Learner(nn.Module):
         self._testing_loop(test_dataloaders=test_dataloaders)
 
     def _validation_loop(self, val_dataloaders: List[DataLoader] = None):
-
         if val_dataloaders is None:
             val_dataloaders = self.val_dataloaders
 
@@ -393,7 +391,6 @@ class Learner(nn.Module):
             self.end_validation(val_dataloaders=val_dataloaders)
 
     def _testing_loop(self, test_dataloaders: List[DataLoader] = None):
-
         if test_dataloaders is None:
             test_dataloaders = self.test_dataloaders
 
@@ -439,7 +436,6 @@ class Learner(nn.Module):
                         self._validation_loop()
 
                     for batch_idx, batch in enumerate(train_dataloader):
-
                         self.training_step(
                             model=self.model, batch=batch, batch_idx=batch_idx
                         )

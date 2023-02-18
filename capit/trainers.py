@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import wandb
 from accelerate import Accelerator
 from hydra_zen import instantiate
-from mlproject.callbacks import Interval
+from capit.callbacks import Interval
 from torch.utils.data import DataLoader
 
 from .decorators import collect_metrics
@@ -106,7 +106,6 @@ class ClassificationTrainer(Trainer):
     def start_training(
         self, epoch_idx: int, step_idx: int, train_dataloader: DataLoader = None
     ):
-
         self.epoch_metrics = {}
         return TrainerOutput(
             opt_loss=None, step_idx=step_idx, metrics={}, phase_name="training"

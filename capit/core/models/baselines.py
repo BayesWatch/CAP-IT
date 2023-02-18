@@ -134,7 +134,6 @@ class CLIPImageTextModel(nn.Module):
         return image_hidden_token
 
     def forward_text(self, text: torch.Tensor) -> torch.Tensor:
-
         text = self.preprocess_text(text)
         if len(text.shape) == 1:
             text = text.unsqueeze(0)
@@ -177,8 +176,7 @@ class CLIPImageTextModel(nn.Module):
             text_output = accelerator.gather(text_output)
 
         similarity = (
-            torch.matmul(text_output, image_output.t())
-            * self.model.logit_scale
+            torch.matmul(text_output, image_output.t()) * self.model.logit_scale
         )
 
         loss = contrastive_loss(similarity)
@@ -222,7 +220,6 @@ class CLIPImageTextModel(nn.Module):
         clip_output: CLIPModelOutput,
         accelerator: accelerate.Accelerator = None,
     ):
-
         accuracy = (
             (clip_output.logits_per_image.argmax(dim=-1) == 0).float().mean()
         )
@@ -390,7 +387,6 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
         return image_output
 
     def forward_text(self, text: torch.Tensor) -> torch.Tensor:
-
         text = self.preprocess_text(text)
         if len(text.shape) == 1:
             text = text.unsqueeze(0)
@@ -410,7 +406,6 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
         accelerator: Optional[accelerate.Accelerator] = None,
         **kwargs,
     ) -> CLIPOutput:
-
         image = batch.target_image[0]
         challenge_images = batch.challenge_images[0]
         images = torch.cat([image.unsqueeze(0), challenge_images], dim=0)

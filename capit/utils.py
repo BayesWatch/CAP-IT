@@ -1,5 +1,6 @@
 import logging
 import random
+import os
 
 import numpy as np
 import torch
@@ -82,3 +83,16 @@ def pretty_config(
         branch.add(Syntax(branch_content, "yaml"))
 
     return tree
+
+def get_rank():
+    """Returns rank of the current process."""
+    if torch.distributed.is_initialized():
+        return torch.distributed.get_rank()
+    else:
+        rank_keys = ("RANK", "LOCAL_RANK", "SLURM_PROCID", "JSM_NAMESPACE_RANK")
+        for key in rank_keys:
+            rank = os.environ.get(key)
+            if rank is not None:
+                return int(rank)
+        # None to differentiate whether an environment variable was set at all
+        return None

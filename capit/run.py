@@ -1,7 +1,6 @@
 import os
 import shutil
 
-import dotenv
 import wandb
 from rich import print
 from rich.traceback import install
@@ -24,13 +23,11 @@ os.environ[
 ] = "DETAIL"  # extremely useful when debugging DDP setups
 
 install()  # beautiful and clean tracebacks for debugging
-dotenv.load_dotenv(override=True, verbose=True)
 
 
 import pathlib
 from typing import Callable, List, Optional, Union
 
-import dotenv
 import hydra
 import torch
 from huggingface_hub import (
@@ -46,7 +43,7 @@ from capit.callbacks import Callback
 from capit.config import BaseConfig, collect_config_store
 from capit.evaluators import ClassificationEvaluator
 from capit.trainers import ClassificationTrainer
-from capit.utils import get_logger, pretty_config, set_seed
+from capit.utils import get_logger, get_rank, pretty_config, set_seed
 from omegaconf import OmegaConf
 from torch import nn
 from torch.utils.data import Dataset
@@ -84,37 +81,40 @@ def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
     )
     repo_url = create_repo(repo_path, repo_type="model", exist_ok=True)
 
-    logger.info(f"Created repo {repo_path}, {cfg.hf_repo_dir}")
+    # do the below only for rank 0
+    if get_rank() == 0:
+    
+        logger.info(f"Created repo {repo_path}, {cfg.hf_repo_dir}")
 
-    if not pathlib.Path(cfg.hf_repo_dir).exists():
-        pathlib.Path(cfg.hf_repo_dir).mkdir(parents=True, exist_ok=True)
-        pathlib.Path(pathlib.Path(cfg.hf_repo_dir) / "checkpoints").mkdir(
-            parents=True, exist_ok=True
+        if not pathlib.Path(cfg.hf_repo_dir).exists():
+            pathlib.Path(cfg.hf_repo_dir).mkdir(parents=True, exist_ok=True)
+            pathlib.Path(pathlib.Path(cfg.hf_repo_dir) / "checkpoints").mkdir(
+                parents=True, exist_ok=True
+            )
+
+        config_dict = OmegaConf.to_container(cfg, resolve=True)
+
+        hf_api = HfApi()
+        config_json_path: pathlib.Path = save_json(
+            filepath=pathlib.Path(cfg.hf_repo_dir) / "config.json",
+            dict_to_store=config_dict,
+            overwrite=True,
+        )
+        hf_api.upload_file(
+            repo_id=repo_path,
+            path_or_fileobj=config_json_path.as_posix(),
+            path_in_repo="config.json",
         )
 
-    config_dict = OmegaConf.to_container(cfg, resolve=True)
+        config_yaml_path = pathlib.Path(cfg.hf_repo_dir) / "config.yaml"
+        with open(config_yaml_path, "w") as file:
+            documents = yaml.dump(config_dict, file)
 
-    hf_api = HfApi()
-    config_json_path: pathlib.Path = save_json(
-        filepath=pathlib.Path(cfg.hf_repo_dir) / "config.json",
-        dict_to_store=config_dict,
-        overwrite=True,
-    )
-    hf_api.upload_file(
-        repo_id=repo_path,
-        path_or_fileobj=config_json_path.as_posix(),
-        path_in_repo="config.json",
-    )
-
-    config_yaml_path = pathlib.Path(cfg.hf_repo_dir) / "config.yaml"
-    with open(config_yaml_path, "w") as file:
-        documents = yaml.dump(config_dict, file)
-
-    hf_api.upload_file(
-        repo_id=repo_path,
-        path_or_fileobj=config_yaml_path.as_posix(),
-        path_in_repo="config.yaml",
-    )
+        hf_api.upload_file(
+            repo_id=repo_path,
+            path_or_fileobj=config_yaml_path.as_posix(),
+            path_in_repo="config.yaml",
+        )
 
     try:
         if cfg.download_checkpoint_with_name is not None:

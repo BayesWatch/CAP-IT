@@ -22,7 +22,6 @@ from hydra_zen import builds, instantiate
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import Compose, RandomCrop, Resize, ToTensor
-from traitlets import Int
 from capit.core.data.config import ImageShape, ModalityConfig
 from capit.core.utils.storage import load_json, save_json
 
@@ -214,7 +213,7 @@ class DummyMultiModalDataset(Dataset):
 
         return data_dict
 
-    def __len__(self) -> Int:
+    def __len__(self) -> int:
         return 10000000
 
 
