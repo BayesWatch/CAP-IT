@@ -97,6 +97,7 @@ class ClassificationTrainer(Trainer):
             step_idx=step_idx,
             metrics={
                 "accuracy": metrics["accuracy"],
+                "accuracy_top_5": metrics["accuracy_top_5"],
                 "loss": loss,
                 "lr": self.optimizer.param_groups[0]["lr"],
             },
