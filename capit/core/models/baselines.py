@@ -35,6 +35,14 @@ class CLIPModelOutput:
     loss: Optional[torch.Tensor] = None
 
 
+def top5_accuracy(predictions):
+    """
+    Computes the top 5 accuracy for a set of predictions and labels.
+    """
+
+    return (predictions.argsort(descending=True) == 0).float().sum()
+
+
 @configurable
 class CLIPImageTextModel(nn.Module):
     def __init__(
@@ -223,9 +231,11 @@ class CLIPImageTextModel(nn.Module):
         accuracy = (
             (clip_output.logits_per_image.argmax(dim=-1) == 0).float().mean()
         )
+        accuracy_top_5 = top5_accuracy(clip_output.logits_per_image)
         output_dict = clip_output.__dict__
         output_dict["metrics"] = {
             "accuracy": accuracy,
+            "accuracy_top_5": accuracy_top_5,
             "loss": clip_output.loss,
         }
 
