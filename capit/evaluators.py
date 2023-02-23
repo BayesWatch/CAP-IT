@@ -72,7 +72,11 @@ class ClassificationEvaluator(Evaluator):
         return EvaluatorOutput(
             step_idx=step_idx,
             phase_name="validation",
-            metrics={"accuracy": metrics["accuracy"], "loss": loss},
+            metrics={
+                "accuracy": metrics["accuracy"],
+                "accuracy_top_5": metrics["accuracy_top_5"],
+                "loss": loss,
+            },
         )
 
     def test_step(
@@ -99,7 +103,11 @@ class ClassificationEvaluator(Evaluator):
         return EvaluatorOutput(
             step_idx=step_idx,
             phase_name="test",
-            metrics={"accuracy": metrics["accuracy"], "loss": loss},
+            metrics={
+                "accuracy": metrics["accuracy"],
+                "accuracy_top_5": metrics["accuracy_top_5"],
+                "loss": loss,
+            },
         )
 
     @collect_metrics
