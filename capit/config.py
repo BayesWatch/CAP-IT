@@ -30,7 +30,7 @@ from torch.utils.data import DataLoader
 
 ## Generic shortcut variables to useful hydra variables ###########################
 
-CHECKPOINT_DIR = "${hf_repo_dir}"
+CHECKPOINT_DIR = "${hf_cache_dir}"
 HF_USERNAME = "${hf_username}"
 CODE_DIR = "${code_dir}"
 DATASET_DIR = "${data_dir}"
@@ -44,6 +44,7 @@ EXP_NAME = "${exp_name}"
 SEED = "${seed}"
 RESUME = "${resume}"
 TOTAL_TRAIN_STEPS = "${total_train_steps}"
+NUM_WORKERS = "${num_workers}"
 
 ## Datasets and DataLoaders ######################################################
 
@@ -54,90 +55,6 @@ class DatasetDirectoryConfig:
     val: Optional[str] = None
     test: Optional[str] = None
 
-
-dataset_config = InstagramImageTextMultiModalDatasePyArrow.build_config(
-    populate_full_signature=True
-)
-
-dataloader_config = builds(
-    DataLoader,
-    dataset=None,
-    collate_fn=dataclass_collate,
-    populate_full_signature=True,
-)
-
-
-## Experiment tracking and weight upload and download callback configs ############
-
-wandb_args_config = builds(wandb.init, populate_full_signature=True)
-
-wandb_args_default = wandb_args_config(
-    project=os.environ["WANDB_PROJECT"],
-    resume="allow",  # allow, True, False, must
-    dir=CURRENT_EXPERIMENT_DIR,
-    save_code=True,
-)
-
-
-@hydrated_dataclass(target=timedelta)
-class TimerConfig:
-    seconds: int = 60
-    # minutes: int = 60
-
-
-HFModelUploadConfig = builds(
-    UploadCheckpointsToHuggingFace, populate_full_signature=True
-)
-
-hf_upload = HFModelUploadConfig(
-    repo_name=EXPERIMENT_NAME, repo_owner=HF_USERNAME
-)
-
-default_callbacks = dict(hf_uploader=hf_upload)
-
-## Optimization configs ########################################################
-adamw_optimizer_config = builds(
-    torch.optim.AdamW,
-    populate_full_signature=True,
-    zen_partial=True,
-)
-
-
-cosine_learning_rate_scheduler_config = builds(
-    CosineLRScheduler,
-    populate_full_signature=True,
-    zen_partial=True,
-)
-
-accelerator_config = builds(Accelerator, populate_full_signature=True)
-
-cosine_learning_rate_scheduler_config = cosine_learning_rate_scheduler_config()
-
-## Model configs ################################################################
-
-baseline_model_config = CLIPImageTextModel.build_config(
-    populate_full_signature=True
-)
-fine_tuning_model_config = CLIPWithPostProcessingImageTextModel.build_config(
-    populate_full_signature=True
-)
-cap_model_config = CAPCLIPImageTextModel.build_config(
-    populate_full_signature=True
-)
-
-## Trainer/Learner configs ######################################################
-learner_config = builds(Learner, populate_full_signature=True)
-
-learner_config = learner_config(
-    model=None,
-    experiment_name=EXPERIMENT_NAME,
-    experiment_dir=CHECKPOINT_DIR,
-    resume=RESUME,
-    evaluate_every_n_steps=1000,
-    checkpoint_after_validation=False,
-    checkpoint_every_n_steps=250,
-    train_iters=TOTAL_TRAIN_STEPS,
-)
 
 ## Top Level config as visible from Hydra-Zen commandline ########################
 @dataclass
@@ -170,9 +87,9 @@ class BaseConfig:
     print_config: bool = False
     train_batch_size: int = 1
     eval_batch_size: int = 1
-    total_train_steps: int = 25000
-    total_val_steps: int = 3000
-    total_test_steps: int = 4500
+    total_train_steps: int = 1000000
+    total_val_steps: int = 10000
+    total_test_steps: int = 10000
     num_workers: int = multiprocessing.cpu_count()
     train: bool = True
     test: bool = False
@@ -190,8 +107,8 @@ class BaseConfig:
     )
 
     current_experiment_dir: str = "${root_experiment_dir}/${exp_name}"
-    repo_path: str = "${hf_username}/${exp_name}"
-    hf_repo_dir: str = "${current_experiment_dir}/repo"
+    hf_repo_path: str = "${hf_username}/${exp_name}"
+    hf_cache_dir: str = "${current_experiment_dir}/repo"
     code_dir: str = "/app/"
 
 
@@ -201,19 +118,100 @@ def collect_config_store():
     ## Adding named config sets to make it easier to call from command line ########
     config_store = ConfigStore.instance()
     ###################################################################################
+    
+    
+    dataset_config = InstagramImageTextMultiModalDatasePyArrow.build_config(
+        populate_full_signature=True
+    )
+
+    dataloader_config = builds(
+        DataLoader,
+        dataset=None,
+        collate_fn=dataclass_collate,
+        populate_full_signature=True,
+    )
+
+
+    ## Experiment tracking and weight upload and download callback configs ############
+
+    wandb_args_config = builds(wandb.init, populate_full_signature=True)
+
+    wandb_args_default = wandb_args_config(
+        project=os.environ["WANDB_PROJECT"],
+        resume="allow",  # allow, True, False, must
+        dir=CURRENT_EXPERIMENT_DIR,
+        save_code=True,
+    )
+
+
+    @hydrated_dataclass(target=timedelta)
+    class TimerConfig:
+        seconds: int = 60
+        # minutes: int = 60
+
+
+    HFModelUploadConfig = builds(
+        UploadCheckpointsToHuggingFace, populate_full_signature=True
+    )
+
+    hf_upload = HFModelUploadConfig(repo_name=EXPERIMENT_NAME, repo_owner=HF_USERNAME)
+
+    default_callbacks = dict(hf_uploader=hf_upload)
+
+    ## Optimization configs ########################################################
+    adamw_optimizer_config = builds(
+        torch.optim.AdamW,
+        populate_full_signature=True,
+        zen_partial=True,
+    )
+
+
+    cosine_learning_rate_scheduler_config = builds(
+        CosineLRScheduler,
+        populate_full_signature=True,
+        zen_partial=True,
+    )
+
+    accelerator_config = builds(Accelerator, populate_full_signature=True)
+
+    cosine_learning_rate_scheduler_config = cosine_learning_rate_scheduler_config()
+
+    ## Model configs ################################################################
+
+    baseline_model_config = CLIPImageTextModel.build_config(populate_full_signature=True)
+    fine_tuning_model_config = CLIPWithPostProcessingImageTextModel.build_config(
+        populate_full_signature=True
+    )
+    cap_model_config = CAPCLIPImageTextModel.build_config(populate_full_signature=True)
+
+    ## Trainer/Learner configs ######################################################
+    learner_config = builds(Learner, populate_full_signature=True)
+
+    learner_config = learner_config(
+        model=None,
+        experiment_name=EXPERIMENT_NAME,
+        experiment_dir=CHECKPOINT_DIR,
+        resume=RESUME,
+        evaluate_every_n_steps=2500,
+        checkpoint_after_validation=True,
+        checkpoint_every_n_steps=None,
+        train_iters=TOTAL_TRAIN_STEPS,
+    )
+
+    
     baseline_config = baseline_model_config(
-        model_name_or_path="openai/clip-vit-large-patch14",
+        model_name_or_path="openai/clip-vit-base-patch32",
         pretrained=True,
     )
 
     baseline_with_post_processing_config = fine_tuning_model_config(
-        model_name_or_path="openai/clip-vit-large-patch14",
+        model_name_or_path="openai/clip-vit-base-patch32",
         pretrained=True,
         backbone_fine_tunable=False,
     )
 
     cap_config = cap_model_config(
-        model_name_or_path="openai/clip-vit-large-patch14",
+        model_name_or_path="openai/clip-vit-base-patch32",
         pretrained=True,
         backbone_fine_tunable=False,
     )
@@ -256,7 +254,8 @@ def collect_config_store():
         name="default",
         node=dataloader_config(
             batch_size=TRAIN_BATCH_SIZE,
-            num_workers=multiprocessing.cpu_count(),
+            num_workers=NUM_WORKERS,
+            prefetch_factor=2,
             pin_memory=True,
             shuffle=True,
         ),
@@ -281,13 +280,9 @@ def collect_config_store():
         node=learner_config,
     )
 
-    config_store.store(
-        group="callbacks", name="default", node=default_callbacks
-    )
+    config_store.store(group="callbacks", name="default", node=default_callbacks)
 
-    config_store.store(
-        group="wandb_args", name="default", node=wandb_args_default
-    )
+    config_store.store(group="wandb_args", name="default", node=wandb_args_default)
 
     config_store.store(
         group="hydra",
@@ -329,9 +324,7 @@ def collect_config_store():
                 root={"handlers": ["rich"], "level": "INFO"},
                 disable_existing_loggers=False,
             ),
-            run={
-                "dir": "${current_experiment_dir}/hydra-run/${now:%Y-%m-%d_%H-%M-%S}"
-            },
+            run={"dir": "${current_experiment_dir}/hydra-run/${now:%Y-%m-%d_%H-%M-%S}"},
             sweep={
                 "dir": "${current_experiment_dir}/hydra-multirun/${now:%Y-%m-%d_%H-%M-%S}",
                 "subdir": "${hydra.job.num}",

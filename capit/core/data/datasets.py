@@ -1,6 +1,10 @@
+import json
+import logging
+from multiprocessing import Value
 import os
 import pathlib
 import random
+import shutil
 import sys
 from asyncio.log import logger
 from collections import defaultdict
@@ -25,11 +29,12 @@ from torchvision.transforms import Compose, RandomCrop, Resize, ToTensor
 from capit.core.data.config import ImageShape, ModalityConfig
 from capit.core.utils.storage import load_json, save_json
 
-from capit.decorators import configurable
+from capit.decorators import configurable, get_next_on_error
 from capit.utils import get_logger
 from torch.utils.data.dataloader import default_collate
+from transformers import CLIPProcessor
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, logging_level=logging.DEBUG)
 
 
 @dataclass
@@ -72,9 +77,9 @@ def extract_captions_from_file(filepath: str):
 def check_if_image_has_matching_info_file(image_path: str):
     if isinstance(image_path, pathlib.Path):
         image_path = str(image_path)
-    info_file_path = pathlib.Path(
-        image_path.replace("image", "info")
-    ).with_suffix(".info")
+    info_file_path = pathlib.Path(image_path.replace("image", "info")).with_suffix(
+        ".info"
+    )
     return info_file_path.exists()
 
 
@@ -192,6 +197,7 @@ class DummyMultiModalDataset(Dataset):
                 / 255.0
             )
 
+    @get_next_on_error
     def __getitem__(self, index) -> MultiModalInput:
         actual_index = index % self.num_samples
 
@@ -248,9 +254,7 @@ class ImageTextRetrievalInput:
     target_text: List[str]
     challenge_paths: List[str] = None
     collection_images: Optional[
-        TensorType[
-            "batch_size", "num_collection_images", "channels", "height", "width"
-        ]
+        TensorType["batch_size", "num_collection_images", "channels", "height", "width"]
     ] = None
     collection_paths: Optional[List[str]] = None
 
@@ -333,9 +337,7 @@ class InstagramImageTextMultiModalDataset(Dataset):
             )
         else:
             logger.info("Loading info and image paths from cache")
-            self._user_to_post_dict = load_json(
-                filepath=user_to_post_id_cache_path
-            )
+            self._user_to_post_dict = load_json(filepath=user_to_post_id_cache_path)
 
         self._post_image_dir = post_image_dir
         self._post_info_dir = post_info_dir
@@ -355,18 +357,17 @@ class InstagramImageTextMultiModalDataset(Dataset):
         elif set_name == SplitType.VAL:
             start_idx = int(set_name_to_ratio[SplitType.TRAIN])
             end_idx = int(
-                set_name_to_ratio[SplitType.TRAIN]
-                + set_name_to_ratio[SplitType.VAL]
+                set_name_to_ratio[SplitType.TRAIN] + set_name_to_ratio[SplitType.VAL]
             )
             self._idx_to_user_name = self._idx_to_user_name[start_idx:end_idx]
         elif set_name == SplitType.TEST:
             start_idx = int(
-                set_name_to_ratio[SplitType.TRAIN]
-                + set_name_to_ratio[SplitType.VAL]
+                set_name_to_ratio[SplitType.TRAIN] + set_name_to_ratio[SplitType.VAL]
             )
 
             self._idx_to_user_name = self._idx_to_user_name[start_idx:]
 
+    @get_next_on_error
     def __getitem__(self, index):
         if self.restrict_num_users is not None:
             actual_index = index % self.restrict_num_users
@@ -385,16 +386,9 @@ class InstagramImageTextMultiModalDataset(Dataset):
 
         data_dict = ImageTextRetrievalInput()
 
-        try:
-            data_dict.text = load_json(info_path)["edge_media_to_caption"][
-                "edges"
-            ][0]["node"]["text"]
-        except:
-            logger.debug(
-                "Could not find valid text for this target image, will resample",
-                load_json(info_path),
-            )
-            return self.__getitem__(index + 1)
+        data_dict.text = load_json(info_path)["edge_media_to_caption"]["edges"][0][
+            "node"
+        ]["text"]
 
         data_dict.image = Image.open(image_path)
 
@@ -438,10 +432,14 @@ class InstagramImageTextMultiModalDataset(Dataset):
                 ),
                 replace=False,
             )
-            
-            if len(shuffled_post_ids) < self.max_num_query_images_per_episode:
-                shuffled_post_ids = np.concatenate(shuffled_post_ids, shuffled_post_ids[:self.max_num_query_images_per_episode - len(shuffled_post_ids)])
 
+            if len(shuffled_post_ids) < self.max_num_query_images_per_episode:
+                shuffled_post_ids = np.concatenate(
+                    shuffled_post_ids,
+                    shuffled_post_ids[
+                        : self.max_num_query_images_per_episode - len(shuffled_post_ids)
+                    ],
+                )
 
             for idx, collection_post_id in enumerate(shuffled_post_ids):
                 if collection_post_id != target_post_id:
@@ -458,13 +456,9 @@ class InstagramImageTextMultiModalDataset(Dataset):
                     collection_image = Image.open(image_path)
 
                     if self.image_transforms is not None:
-                        collection_image = self.image_transforms(
-                            collection_image
-                        )
+                        collection_image = self.image_transforms(collection_image)
                     query_image_set.append(collection_image)
-        elif (
-            self.query_image_source == ChallengeSamplesSourceTypes.ACROSS_USERS
-        ):
+        elif self.query_image_source == ChallengeSamplesSourceTypes.ACROSS_USERS:
 
             shuffled_user_names = rng.choice(
                 self._idx_to_user_name,
@@ -477,9 +471,9 @@ class InstagramImageTextMultiModalDataset(Dataset):
                     collection_post_i = rng.choice(
                         len(self._user_to_post_dict[collection_user_name])
                     )
-                    collection_post_id = self._user_to_post_dict[
-                        collection_user_name
-                    ][collection_post_i]
+                    collection_post_id = self._user_to_post_dict[collection_user_name][
+                        collection_post_i
+                    ]
 
                     (
                         image_path,
@@ -494,9 +488,7 @@ class InstagramImageTextMultiModalDataset(Dataset):
                     collection_image = Image.open(image_path)
 
                     if self.image_transforms is not None:
-                        collection_image = self.image_transforms(
-                            collection_image
-                        )
+                        collection_image = self.image_transforms(collection_image)
                     query_image_set.append(collection_image)
 
         else:
@@ -506,9 +498,7 @@ class InstagramImageTextMultiModalDataset(Dataset):
 
         return query_image_set
 
-    def _get_user_collection_context_images(
-        self, rng, user_name, target_post_id
-    ):
+    def _get_user_collection_context_images(self, rng, user_name, target_post_id):
 
         collection_images = []
 
@@ -520,9 +510,15 @@ class InstagramImageTextMultiModalDataset(Dataset):
             ),
             replace=False,
         )
-        
+
         if len(shuffled_post_ids) < self.max_num_collection_images_per_episode:
-            shuffled_post_ids = np.concatenate(shuffled_post_ids, shuffled_post_ids[:self.max_num_collection_images_per_episode - len(shuffled_post_ids)])
+            shuffled_post_ids = np.concatenate(
+                shuffled_post_ids,
+                shuffled_post_ids[
+                    : self.max_num_collection_images_per_episode
+                    - len(shuffled_post_ids)
+                ],
+            )
 
         for idx, collection_post_id in enumerate(shuffled_post_ids):
             if collection_post_id != target_post_id:
@@ -552,31 +548,25 @@ class InstagramImageTextMultiModalDataset(Dataset):
 
         for post_id in self._user_to_post_dict[user_name]:
 
-            (
-                image_path,
-                info_path,
-            ) = generate_post_paths_from_user_name_and_post_id(
+            (image_path, info_path,) = generate_post_paths_from_user_name_and_post_id(
                 username=user_name,
                 post_id=post_id,
                 post_image_dir=self._post_image_dir,
                 post_info_dir=self._post_info_dir,
             )
 
-            try:
-                text = load_json(info_path)["edge_media_to_caption"]["edges"][
-                    0
-                ]["node"]["text"]
+            text = load_json(info_path)["edge_media_to_caption"]["edges"][0]["node"][
+                "text"
+            ]
 
-                image = Image.open(image_path)
+            image = Image.open(image_path)
 
-                if self.image_transforms is not None:
-                    image = self.image_transforms(image)
+            if self.image_transforms is not None:
+                image = self.image_transforms(image)
 
-                data_dict["image"].append(image)
-                data_dict["text"].append(text)
-                data_dict["user_name"] = user_name
-            except:
-                pass
+            data_dict["image"].append(image)
+            data_dict["text"].append(text)
+            data_dict["user_name"] = user_name
 
         return data_dict
 
@@ -604,9 +594,7 @@ class ToThreeChannels(nn.Module):
 
 
 def default_image_transforms():
-    return Compose(
-        [Resize(224), RandomCrop(224), ToTensor(), ToThreeChannels()]
-    )
+    return Compose([Resize(224), RandomCrop(224), ToTensor(), ToThreeChannels()])
 
 
 default_image_transforms_config = builds(default_image_transforms)
@@ -628,6 +616,8 @@ class InstagramImageTextMultiModalDatasePyArrow(Dataset):
         max_num_query_images_per_episode: int = 50,
         challenge_image_source: str = ChallengeSamplesSourceTypes.WITHIN_USER,
         restrict_num_users: Optional[int] = None,
+        dummy_batch_mode: bool = False,
+        model_name_or_path: str = "openai/clip-vit-base-patch32",
     ):
         super(InstagramImageTextMultiModalDatasePyArrow, self).__init__()
 
@@ -653,13 +643,21 @@ class InstagramImageTextMultiModalDatasePyArrow(Dataset):
         )
 
         self.total_num_users = len(self.username_list)
+        self.dummy_batch_mode = dummy_batch_mode
+
+        if dummy_batch_mode:
+            self.dummy_cache_size = 1
+            self.dummy_cache = []
 
         set_name_to_ratio = {
             SplitType.TRAIN: floor(0.8 * self.total_num_users),
             SplitType.VAL: floor(0.1 * self.total_num_users),
-            SplitType.TEST: self.total_num_users
-            - floor(0.9 * self.total_num_users),
+            SplitType.TEST: self.total_num_users - floor(0.9 * self.total_num_users),
         }
+
+        self.processor: CLIPProcessor = CLIPProcessor.from_pretrained(
+            model_name_or_path
+        )
 
         if set_name == SplitType.TRAIN:
             start_idx = 0
@@ -669,22 +667,18 @@ class InstagramImageTextMultiModalDatasePyArrow(Dataset):
         elif set_name == SplitType.VAL:
             start_idx = int(set_name_to_ratio[SplitType.TRAIN])
             end_idx = int(
-                set_name_to_ratio[SplitType.TRAIN]
-                + set_name_to_ratio[SplitType.VAL]
+                set_name_to_ratio[SplitType.TRAIN] + set_name_to_ratio[SplitType.VAL]
             )
             self.set_usernames = self.username_list[start_idx:end_idx]
 
         elif set_name == SplitType.TEST:
             start_idx = int(
-                set_name_to_ratio[SplitType.TRAIN]
-                + set_name_to_ratio[SplitType.VAL]
+                set_name_to_ratio[SplitType.TRAIN] + set_name_to_ratio[SplitType.VAL]
             )
 
             self.set_usernames = self.username_list[start_idx:]
 
-    def read_image_caption(
-        self, image_path: pathlib.Path, info_path: pathlib.Path
-    ):
+    def read_image_caption(self, image_path: pathlib.Path, info_path: pathlib.Path):
 
         if isinstance(image_path, str):
             image_path = pathlib.Path(image_path)
@@ -697,21 +691,11 @@ class InstagramImageTextMultiModalDatasePyArrow(Dataset):
         )
         image_path = pathlib.Path(image_path)
 
-        info_path = info_path.as_posix().replace(
-            "/data", self.data_source.as_posix()
-        )
+        info_path = info_path.as_posix().replace("/data", self.data_source.as_posix())
 
         info_path = pathlib.Path(info_path)
 
-        try:
-            text = load_json(info_path)["edge_media_to_caption"]["edges"][0][
-                "node"
-            ]["text"]
-        except Exception:
-            logger.debug(
-                "Could not find valid text for this target image, will resample",
-            )
-            return self.__getitem__(self.current_index + 1)
+        text = load_json(info_path)["edge_media_to_caption"]["edges"][0]["node"]["text"]
 
         image = Image.open(image_path)
         if self.image_transforms is not None:
@@ -720,169 +704,207 @@ class InstagramImageTextMultiModalDatasePyArrow(Dataset):
         if self.text_transforms is not None:
             text = self.text_transforms(text)
         return image, text
-
+    
+    @get_next_on_error
     def __getitem__(self, index):
-        if self.restrict_num_users is not None:
-            actual_index = index % self.restrict_num_users
-        else:
-            actual_index = index % len(self.set_usernames)
+        try:
+            if self.dummy_batch_mode and len(self.dummy_cache) >= self.dummy_cache_size:
+                return self.dummy_cache[index % self.dummy_cache_size]
 
-        self.current_index = index
+            if self.restrict_num_users is not None:
+                actual_index = index % self.restrict_num_users
+            else:
+                actual_index = index % len(self.set_usernames)
 
-        user_name = self.set_usernames[actual_index]
-        rng = np.random.RandomState(seed=index)
-        user_posts = get_ranked_filepaths_from_user(
-            username_filepath=self.table_source / user_name,
-            top_k_percent_to_return=self.top_k_percent,
-        )
+            self.current_index = index
 
-        if len(user_posts) == 0:
-            logger.debug("No challenge posts found for this episode")
-            return self.__getitem__(index + 1)
-
-        target_post_idx = rng.choice(len(user_posts), size=1)[0]
-        target_image_path, target_info_path = user_posts[target_post_idx]
-
-        del user_posts[target_post_idx]  # remove target post from collection
-
-        random.shuffle(user_posts)
-
-        if len(user_posts) == 0:
-            logger.debug("No challenge posts found for this episode")
-            return self.__getitem__(index + 1)
-
-        num_collection_posts = min(
-            self.max_num_collection_images_per_episode,
-            len(user_posts),
-        )
-        collection_posts = user_posts[:num_collection_posts]
-
-        if (
-            len(collection_posts) == 0
-            and self.max_num_collection_images_per_episode > 0
-        ):
-            logger.debug("No collection posts found for this episode")
-            return self.__getitem__(index + 1)
-
-        if self.query_image_source == ChallengeSamplesSourceTypes.WITHIN_USER:
-            num_remaining_user_posts = len(user_posts) - num_collection_posts
-            if num_remaining_user_posts <= 1:
-                return self.__getitem__(index + 1)
-            
-            if num_remaining_user_posts == 0:
-                logger.debug("No challenge posts found for this episode")
-                return self.__getitem__(index + 1)
-
-            num_challenge_posts = min(
-                self.max_num_query_images_per_episode,
-                num_remaining_user_posts,
-            )
-            challenge_posts = user_posts[
-                num_collection_posts : num_collection_posts
-                + num_challenge_posts
-            ]
-            
-            while len(challenge_posts) < self.max_num_query_images_per_episode:
-                challenge_posts = challenge_posts + user_posts[:self.max_num_query_images_per_episode - len(challenge_posts)]
-
-        elif (
-            self.query_image_source == ChallengeSamplesSourceTypes.ACROSS_USERS
-        ):
-            random_user_name_idx = rng.randint(1, len(self.set_usernames))
-            while self.set_usernames[random_user_name_idx] == user_name:
-                random_user_name_idx = rng.randint(1, len(self.set_usernames))
-
-            challenge_user_name = self.set_usernames[random_user_name_idx]
-
-            challenge_user_posts = get_ranked_filepaths_from_user(
-                username_filepath=self.table_source / challenge_user_name,
+            user_name = self.set_usernames[actual_index]
+            rng = np.random.RandomState(seed=index)
+            user_posts = get_ranked_filepaths_from_user(
+                username_filepath=self.table_source / user_name,
                 top_k_percent_to_return=self.top_k_percent,
             )
 
-            if len(challenge_user_posts) == 0:
+            if len(user_posts) == 0:
                 logger.debug("No challenge posts found for this episode")
-                return self.__getitem__(index + 1)
+                raise ValueError("No challenge posts found for this episode")
 
-            num_challenge_posts = min(
-                self.max_num_query_images_per_episode,
-                len(challenge_user_posts),
+            target_post_idx = rng.choice(len(user_posts), size=1)[0]
+            target_image_path, target_info_path = user_posts[target_post_idx]
+
+            del user_posts[target_post_idx]  # remove target post from collection
+
+            random.shuffle(user_posts)
+
+            if len(user_posts) == 0:
+                logger.debug("No challenge posts found for this episode")
+                raise ValueError("No challenge posts found for this episode")
+
+            num_collection_posts = min(
+                self.max_num_collection_images_per_episode,
+                len(user_posts),
             )
-            challenge_posts = challenge_user_posts[:num_challenge_posts]
-            
-            if num_remaining_user_posts < self.max_num_query_images_per_episode:
-                challenge_posts = challenge_posts + challenge_user_posts[:self.max_num_query_images_per_episode - num_remaining_user_posts]
+            collection_posts = user_posts[:num_collection_posts]
 
-        if len(challenge_posts) == 0:
-            logger.debug("No challenge posts found for this episode")
-            return self.__getitem__(index + 1)
+            if (
+                len(collection_posts) == 0
+                and self.max_num_collection_images_per_episode > 0
+            ):
+                logger.debug("No collection posts found for this episode")
+                raise ValueError("No collection posts found for this episode")
 
-        data_dict = defaultdict(list)
+            if self.query_image_source == ChallengeSamplesSourceTypes.WITHIN_USER:
+                num_remaining_user_posts = len(user_posts) - num_collection_posts
+                if num_remaining_user_posts <= 1:
+                    raise ValueError(
+                        "Not enough challenge posts found for this episode"
+                    )
 
-        image, text = self.read_image_caption(
-            target_image_path, target_info_path
-        )
-        data_dict["target_image"] = image
-        data_dict["target_text"] = text
+                if num_remaining_user_posts == 0:
+                    logger.debug("No challenge posts found for this episode")
+                    raise ValueError("No challenge posts found for this episode")
 
-        for image_path, info_path in collection_posts:
-            image, text = self.read_image_caption(image_path, info_path)
-            data_dict["collection_images"].append(image)
-            data_dict["collection_paths"].append(
-                dict(image=image_path, info=info_path)
-            )
+                num_challenge_posts = min(
+                    self.max_num_query_images_per_episode,
+                    num_remaining_user_posts,
+                )
+                challenge_posts = user_posts[
+                    num_collection_posts : num_collection_posts + num_challenge_posts
+                ]
 
-        if (
-            len(data_dict["collection_images"]) == 0
-            and self.max_num_collection_images_per_episode > 0
-        ):
-            logger.debug("No collection posts found for this episode")
-            return self.__getitem__(index + 1)
+                while len(challenge_posts) < self.max_num_query_images_per_episode:
+                    challenge_posts = (
+                        challenge_posts
+                        + user_posts[
+                            : self.max_num_query_images_per_episode
+                            - len(challenge_posts)
+                        ]
+                    )
 
-        for image_path, info_path in challenge_posts:
-            image, text = self.read_image_caption(image_path, info_path)
-            data_dict["challenge_images"].append(image)
-            data_dict["challenge_paths"].append(
-                dict(image=image_path, info=info_path)
-            )
+            elif self.query_image_source == ChallengeSamplesSourceTypes.ACROSS_USERS:
+                random_user_name_idx = rng.randint(1, len(self.set_usernames))
+                while self.set_usernames[random_user_name_idx] == user_name:
+                    random_user_name_idx = rng.randint(1, len(self.set_usernames))
 
-        if len(data_dict["challenge_images"]) == 0:
-            logger.debug("No challenge posts found for this episode")
-            return self.__getitem__(index + 1)
+                challenge_user_name = self.set_usernames[random_user_name_idx]
 
-        data_dict["challenge_images"] = torch.stack(
-            data_dict["challenge_images"]
-        )
-
-        if (
-            len(data_dict["collection_images"]) == 0
-            and self.max_num_collection_images_per_episode > 0
-        ):
-            logger.exception("No collection posts found for this episode")
-            return self.__getitem__(index + 1)
-        else:
-            if len(data_dict["collection_images"]) > 0:
-                data_dict["collection_images"] = torch.stack(
-                    data_dict["collection_images"]
+                challenge_user_posts = get_ranked_filepaths_from_user(
+                    username_filepath=self.table_source / challenge_user_name,
+                    top_k_percent_to_return=self.top_k_percent,
                 )
 
-        return ImageTextRetrievalInput(**data_dict)
+                if len(challenge_user_posts) == 0:
+                    logger.debug("No challenge posts found for this episode")
+                    raise ValueError("No challenge posts found for this episode")
+
+                num_challenge_posts = min(
+                    self.max_num_query_images_per_episode,
+                    len(challenge_user_posts),
+                )
+                challenge_posts = challenge_user_posts[:num_challenge_posts]
+
+                if num_remaining_user_posts < self.max_num_query_images_per_episode:
+                    challenge_posts = (
+                        challenge_posts
+                        + challenge_user_posts[
+                            : self.max_num_query_images_per_episode
+                            - num_remaining_user_posts
+                        ]
+                    )
+
+            if len(challenge_posts) == 0:
+                logger.debug("No challenge posts found for this episode")
+                raise ValueError("No challenge posts found for this episode")
+
+            data_dict = defaultdict(list)
+
+            image, text = self.read_image_caption(target_image_path, target_info_path)
+            data_dict["target_image"] = image
+            data_dict["target_text"] = text
+
+            for image_path, info_path in collection_posts:
+                image, text = self.read_image_caption(image_path, info_path)
+                data_dict["collection_images"].append(image)
+                data_dict["collection_paths"].append(
+                    dict(image=image_path, info=info_path)
+                )
+
+            if (
+                len(data_dict["collection_images"]) == 0
+                and self.max_num_collection_images_per_episode > 0
+            ):
+                logger.debug("No collection posts found for this episode")
+                raise ValueError("No collection posts found for this episode")
+            try:
+                for image_path, info_path in challenge_posts:
+                    image, text = self.read_image_caption(image_path, info_path)
+                    data_dict["challenge_images"].append(image)
+                    data_dict["challenge_paths"].append(
+                        dict(image=image_path, info=info_path)
+                    )
+            except Exception as e:
+                raise ValueError("No challenge posts found for this episode")
+
+            if len(data_dict["challenge_images"]) == 0:
+                logger.debug("No challenge posts found for this episode")
+                raise ValueError("No challenge posts found for this episode")
+
+            data_dict["challenge_images"] = torch.stack(data_dict["challenge_images"])
+
+            if (
+                len(data_dict["collection_images"]) == 0
+                and self.max_num_collection_images_per_episode > 0
+            ):
+                logger.exception("No collection posts found for this episode")
+                raise ValueError("No collection posts found for this episode")
+            else:
+                if len(data_dict["collection_images"]) > 0:
+                    data_dict["collection_images"] = torch.stack(
+                        data_dict["collection_images"]
+                    )
+
+            if self.dummy_batch_mode and len(self.dummy_cache) < self.dummy_cache_size:
+                self.dummy_cache.append(ImageTextRetrievalInput(**data_dict))
+
+            output = ImageTextRetrievalInput(**data_dict)
+
+            output.challenge_images = self.processor(
+                images=output.challenge_images.unbind(0), return_tensors="pt"
+            )["pixel_values"]
+            if (
+                output.collection_images is not None
+                and len(output.collection_images) > 0
+            ):
+                output.collection_images = self.processor(
+                    images=output.collection_images.unbind(0), return_tensors="pt"
+                )["pixel_values"]
+            output.target_text = self.processor(
+                text=output.target_text,
+                padding=True,
+                truncation=True,
+                return_tensors="pt",
+            )["input_ids"]
+            output.target_image = self.processor(
+                images=output.target_image, return_tensors="pt"
+            )["pixel_values"][0]
+
+            return output
+        except Exception as e:
+            logger.exception(f"Error in episode {index}, {e}")
+            return self.__getitem__(index + 1)
 
     def __len__(self):
         return self.num_episodes
 
     def get_user_name_to_post_count_dict(self):
         return {
-            user_name: len(
-                pq.read_table(self.table_source / user_name).to_pandas()
-            )
+            user_name: len(pq.read_table(self.table_source / user_name).to_pandas())
             for user_name in self.set_usernames
         }
 
 
 @configurable
-class InstagramImageTextMultiModalDatasetByUser(
-    InstagramImageTextMultiModalDataset
-):
+class InstagramImageTextMultiModalDatasetByUser(InstagramImageTextMultiModalDataset):
     def __init__(
         self,
         dataset_dir: str,
@@ -921,13 +943,8 @@ class InstagramImageTextMultiModalDatasetByUser(
         captions = []
         filepaths = []
 
-        for idx, collection_post_id in enumerate(
-            self._user_to_post_dict[user_name]
-        ):
-            (
-                image_path,
-                info_path,
-            ) = generate_post_paths_from_user_name_and_post_id(
+        for idx, collection_post_id in enumerate(self._user_to_post_dict[user_name]):
+            (image_path, info_path,) = generate_post_paths_from_user_name_and_post_id(
                 username=user_name,
                 post_id=collection_post_id,
                 post_image_dir=self._post_image_dir,
@@ -960,6 +977,7 @@ class InstagramImageTextMultiModalDatasetByUser(
 
         return images, captions, filepaths
 
+    @get_next_on_error
     def __getitem__(self, index):
         if self.restrict_num_users is not None:
             actual_index = index % self.restrict_num_users
@@ -981,9 +999,9 @@ class InstagramImageTextMultiModalDatasetByUser(
 
     def get_text_from_filepath(self, filepath):
         try:
-            text = load_json(filepath)["edge_media_to_caption"]["edges"][0][
-                "node"
-            ]["text"]
+            text = load_json(filepath)["edge_media_to_caption"]["edges"][0]["node"][
+                "text"
+            ]
 
             return text
         except Exception:
@@ -1003,9 +1021,8 @@ def dataclass_collate(batch):
     Returns:
         dict: Dictionary of values from the dataclass objects.
     """
-    if isinstance(batch[0], dict) or not hasattr(
-        batch[0], "__dataclass_fields__"
-    ):
+    batch = list(filter(lambda x: x is not None, batch))
+    if isinstance(batch[0], dict) or not hasattr(batch[0], "__dataclass_fields__"):
         return default_collate(batch)
     else:
         batched_dict = {
@@ -1041,39 +1058,49 @@ if __name__ == "__main__":
     os.environ["HYDRA_FULL_ERROR"] = "1"
 
     root_filepath = pathlib.Path("/data/")
-    dataset_config = InstagramImageTextMultiModalDataset.build_config(
-        populate_full_signature=True
-    )
-    dataset_config_instance = dataset_config(dataset_dir=root_filepath)
-    dataset = InstagramImageTextMultiModalDatasePyArrow(
-        dataset_dir=root_filepath,
-        top_k_percent=25,
-        image_transforms=get_image_transforms_instait(),
-        max_num_collection_images_per_episode=50,
-        max_num_query_images_per_episode=100,
-        challenge_image_source=ChallengeSamplesSourceTypes.WITHIN_USER,
-        num_episodes=1000,
-    )
-
-    dataset_loader = DataLoader(
-        dataset,
-        batch_size=1,
-        shuffle=True,
-        num_workers=12,
-        drop_last=True,
-        pin_memory=True,
-        collate_fn=dataclass_collate,
-    )
-
+    table_source = root_filepath / "instagram_table"
     
-    with tqdm.tqdm(total=len(dataset_loader)) as pbar:
-        for sample in dataset_loader:
-            # for key, value in sample.__dict__.items():
-            #     if isinstance(value, list):
-            #         print(key, len(value))
-            #     elif isinstance(value, torch.Tensor):
-            #         print(key, value.shape)
-            #     else:
-            #         print(key, value)
-            #     pass
+    username_list = list(
+            folderpath.name for folderpath in table_source.iterdir()
+        )
+    found_dict = {"found": 0, "not_found": 0}
+    with tqdm.tqdm(total=len(username_list)) as pbar:
+        for username_filepath in username_list:
+            print(username_filepath)
+            try:
+                user_table = pq.read_table(table_source / username_filepath).to_pandas()
+                user_table.sort_values(by="similarity", ascending=False)
+                
+            except Exception as e:
+                print(f"Could not read table for {username_filepath}: {e}")
+                found_dict["not_found"] += 1
+                shutil.rmtree(pathlib.Path(table_source / username_filepath).as_posix())
+                if pathlib.Path(table_source / username_filepath).exists():
+                    print(f"Folder exists after being deleted: {table_source / username_filepath}")
+                continue
+                
+            for entry in user_table.iterrows():
+                entry_idx, entry = entry
+                image_path, info_path = entry["filepath"]
+                if not pathlib.Path(image_path).exists() or not pathlib.Path(info_path).exists():
+                    print(f"Filepath {entry['filepath']} does not exist.")
+                    found_dict["not_found"] += 1
+                    if pathlib.Path(image_path).exists():
+                        pathlib.Path(image_path).unlink()
+                    if pathlib.Path(info_path).exists():
+                        pathlib.Path(info_path).unlink()
+                    parquet_file_path = table_source / username_filepath / f"{entry['id']}.parquet"
+                    print(f"Parquet file path: {parquet_file_path}. {pathlib.Path(parquet_file_path).exists()} {entry['id']} {entry}")
+                    if pathlib.Path(parquet_file_path).exists():
+                        # delete folder parquet file path
+                        parquet_file_path.unlink()
+                        print(f"Deleted parquet file path: {parquet_file_path}")
+                        
+                else:
+                    found_dict["found"] += 1
             pbar.update(1)
+            pbar.set_description(f"Found: {found_dict['found']}, Not Found: {found_dict['not_found']}")
+    
+    print(found_dict)
+    
+    

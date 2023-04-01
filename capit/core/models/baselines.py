@@ -16,15 +16,25 @@ from capit.core.data.datasets import ImageTextRetrievalInput
 from capit.core.utils import get_logger
 from capit.decorators import configurable
 import accelerate
-from huggingface_hub import (
-    Repository,
-    create_repo,
-    hf_hub_download,
-    login,
-    snapshot_download,
-)
+from huggingface_hub import hf_hub_download
+from accelerate import Accelerator
 
 log = get_logger(__name__)
+
+
+def contrastive_accuracy(logits):
+    targets = torch.arange(logits.shape[0]).to(logits.device)
+    accuracy = (logits.argmax(dim=-1) == targets).float().mean()
+    return accuracy
+
+
+def contrastive_accuracy_top_k(logits, k: int = 5):
+    targets = torch.arange(logits.shape[0]).to(logits.device)
+    accuracy = [
+        any(logit.argsort(dim=-1, descending=True)[:k] == target)
+        for logit, target in zip(logits, targets)
+    ]
+    return torch.mean(torch.tensor(accuracy).float())
 
 
 @dataclass
@@ -33,14 +43,6 @@ class CLIPModelOutput:
     text_embeds: torch.Tensor
     image_embeds: torch.Tensor
     loss: Optional[torch.Tensor] = None
-
-
-def top5_accuracy(predictions):
-    """
-    Computes the top 5 accuracy for a set of predictions and labels.
-    """
-
-    return (predictions.argsort(descending=True) == 0).float().sum()
 
 
 @configurable
@@ -68,6 +70,7 @@ class CLIPImageTextModel(nn.Module):
             self.processor.feature_extractor.size,
             self.processor.feature_extractor.size,
         ]
+        self.accelerator = Accelerator()
         self.is_built = False
 
     def build(
@@ -78,12 +81,12 @@ class CLIPImageTextModel(nn.Module):
         log.info(f"Building {self.__class__.__name__} module")
 
         image = batch.target_image[0]
-        challenge_images = batch.challenge_images[0]
+        challenge_images = batch.challenge_images[0, :2]
         image = torch.cat([image.unsqueeze(0), challenge_images], dim=0)
         text = batch.target_text[0]
 
-        image = self.preprocess_image(image)
-        text = self.preprocess_text(text)
+        # image = self.preprocess_image(image)
+        # text = self.preprocess_text(text)
 
         if len(text.shape) == 1:
             text = text.unsqueeze(0)
@@ -104,37 +107,35 @@ class CLIPImageTextModel(nn.Module):
                 image output: {image_hidden_token.shape}, text output: {text_hidden_token.shape}"
         )
 
-    def preprocess_image(
-        self, image: TensorType["batch_size", "channel", "height", "width"]
-    ):
-        if isinstance(image, torch.Tensor):
-            if len(image.shape) == 4:
-                image = image.unbind(0)
-        image = self.processor(images=image, return_tensors="pt")[
-            "pixel_values"
-        ]
-        image = image.to(self.model.device)
+    # def preprocess_image(
+    #     self, image: TensorType["batch_size", "channel", "height", "width"]
+    # ):
+    #     if isinstance(image, torch.Tensor):
+    #         if len(image.shape) == 4:
+    #             image = image.unbind(0)
+    #     image = self.processor(images=image, return_tensors="pt")["pixel_values"]
+    #     image = image.to(self.model.device)
 
-        if len(image.shape) != 4:
-            raise ValueError(
-                f"Input shape for class {self.__class__.__name__} in "
-                "method forward_image must be 4, instead it is "
-                f"{len(image.shape)}, for shape {image.shape}"
-            )
-        return image
+    #     if len(image.shape) != 4:
+    #         raise ValueError(
+    #             f"Input shape for class {self.__class__.__name__} in "
+    #             "method forward_image must be 4, instead it is "
+    #             f"{len(image.shape)}, for shape {image.shape}"
+    #         )
+    #     return image
 
-    def preprocess_text(self, text: List[str]) -> torch.Tensor:
-        text = self.processor(
-            text=text, return_tensors="pt", padding=True, truncation=True
-        )["input_ids"]
-        text = text.to(self.model.device)
-        text = text.to(torch.int32)
-        return text
+    # def preprocess_text(self, text: List[str]) -> torch.Tensor:
+    #     text = self.processor(
+    #         text=text, return_tensors="pt", padding=True, truncation=True
+    #     )["input_ids"]
+    #     text = text.to(self.model.device)
+    #     text = text.to(torch.int32)
+    #     return text
 
     def forward_image(
         self, image: TensorType["batch_size", "channel", "height", "width"]
     ) -> torch.Tensor:
-        image = self.preprocess_image(image)
+        # image = self.preprocess_image(image)
         clip_output = self.model.forward(pixel_values=image)
 
         image_hidden_token = clip_output.vision_model_output.hidden_states[-1]
@@ -142,7 +143,7 @@ class CLIPImageTextModel(nn.Module):
         return image_hidden_token
 
     def forward_text(self, text: torch.Tensor) -> torch.Tensor:
-        text = self.preprocess_text(text)
+        # text = self.preprocess_text(text)
         if len(text.shape) == 1:
             text = text.unsqueeze(0)
         clip_output = self.model.forward(input_ids=text)
@@ -158,13 +159,15 @@ class CLIPImageTextModel(nn.Module):
         accelerator: Optional[accelerate.Accelerator] = None,
         **kwargs,
     ) -> CLIPOutput:
-        image = batch.target_image[0]
-        challenge_images = batch.challenge_images[0]
-        images = torch.cat([image.unsqueeze(0), challenge_images], dim=0)
-        text = batch.target_text[0]
+        image = batch.target_image[0].to(self.accelerator.device)
+        challenge_images = batch.challenge_images[0].to(self.accelerator.device)
+        images = torch.cat([image.unsqueeze(0), challenge_images], dim=0).to(
+            self.accelerator.device
+        )
+        text = batch.target_text[0].to(self.accelerator.device)
 
-        challenge_images = self.preprocess_image(images)
-        prompt_text = self.preprocess_text(text)
+        challenge_images = images  # self.preprocess_image(images)
+        prompt_text = text  # self.preprocess_text(text)
 
         if len(prompt_text.shape) == 1:
             prompt_text = prompt_text.unsqueeze(0)
@@ -179,27 +182,30 @@ class CLIPImageTextModel(nn.Module):
         image_output = clip_output.image_embeds
         text_output = clip_output.text_embeds
 
-        if accelerator is not None:
-            image_output = accelerator.gather(image_output)
-            text_output = accelerator.gather(text_output)
+
+        # normalized features
+        image_output = image_output / image_output.norm(p=2, dim=-1, keepdim=True)
+        text_output = text_output / text_output.norm(p=2, dim=-1, keepdim=True)
 
         similarity = (
-            torch.matmul(text_output, image_output.t()) * self.model.logit_scale
+            torch.matmul(text_output, image_output.t()) * self.model.logit_scale.exp()
         )
+        
+        
 
         loss = contrastive_loss(similarity)
 
         if step:
             return self.compute_loss_and_accuracy(
                 CLIPModelOutput(
-                    logits_per_image=similarity,
+                    logits_per_image=similarity.t(),
                     image_embeds=image_output,
                     text_embeds=text_output,
                     loss=loss,
                 )
             )
         return CLIPModelOutput(
-            logits_per_image=similarity,
+            logits_per_image=similarity.t(),
             image_embeds=image_output,
             text_embeds=text_output,
             loss=loss,
@@ -213,9 +219,7 @@ class CLIPImageTextModel(nn.Module):
         image_embeds = self.forward_image(image)
         text_embeds = self.forward_text(text)
 
-        image_embeds = image_embeds / image_embeds.norm(
-            p=2, dim=-1, keepdim=True
-        )
+        image_embeds = image_embeds / image_embeds.norm(p=2, dim=-1, keepdim=True)
         text_embeds = text_embeds / text_embeds.norm(p=2, dim=-1, keepdim=True)
 
         # cosine similarity as logits
@@ -228,10 +232,9 @@ class CLIPImageTextModel(nn.Module):
         clip_output: CLIPModelOutput,
         accelerator: accelerate.Accelerator = None,
     ):
-        accuracy = (
-            (clip_output.logits_per_image.argmax(dim=-1) == 0).float().mean()
-        )
-        accuracy_top_5 = top5_accuracy(clip_output.logits_per_image)
+        # print(f"Computing loss and accuracy, loss: {clip_output.loss}, {clip_output.logits_per_image.shape}")
+        accuracy = contrastive_accuracy(clip_output.logits_per_image)
+        accuracy_top_5 = contrastive_accuracy_top_k(clip_output.logits_per_image, 5)
         output_dict = clip_output.__dict__
         output_dict["metrics"] = {
             "accuracy": accuracy,
@@ -264,9 +267,7 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
         pretrained: bool = True,
         backbone_fine_tunable: bool = True,
     ):
-        super().__init__(
-            model_name_or_path=model_name_or_path, pretrained=pretrained
-        )
+        super().__init__(model_name_or_path=model_name_or_path, pretrained=pretrained)
         self.fine_tunable = backbone_fine_tunable
 
         if not pretrained:
@@ -306,16 +307,12 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
             d_model=x.shape[2], nhead=8, dim_feedforward=2048
         )
         encoder_norm = nn.LayerNorm(x.shape[2])
-        self.post_processing_module[
-            f"{name}_transformer"
-        ] = nn.TransformerEncoder(
+        self.post_processing_module[f"{name}_transformer"] = nn.TransformerEncoder(
             encoder_layer=transformer_encoder, num_layers=1, norm=encoder_norm
         )
         x = self.post_processing_module[f"{name}_transformer"](x)
         x = x.mean(dim=1)
-        self.post_processing_module[f"{name}_output"] = nn.Linear(
-            x.shape[1], 512
-        )
+        self.post_processing_module[f"{name}_output"] = nn.Linear(x.shape[1], 512)
         x = self.post_processing_module[f"{name}_output"](x)
         return x
 
@@ -328,12 +325,12 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
     def build(self, batch: ImageTextRetrievalInput, **kwargs):
         log.info(f"Building model {self.__class__.__name__}")
         image = batch.target_image[0]
-        challenge_images = batch.challenge_images[0]
+        challenge_images = batch.challenge_images[0, :2]
         image = torch.cat([image.unsqueeze(0), challenge_images], dim=0)
         text = batch.target_text[0]
 
-        image = self.preprocess_image(image)
-        text = self.preprocess_text(text)
+        # image = self.preprocess_image(image)
+        # text = self.preprocess_text(text)
 
         if len(text.shape) == 1:
             text = text.unsqueeze(0)
@@ -360,53 +357,47 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
                 image output: {image_output.shape}, text output: {text_output.shape}"
         )
 
-    def preprocess_image(self, image: torch.Tensor):
-        if isinstance(image, torch.Tensor):
-            if len(image.shape) == 4:
-                image = image.unbind(0)
-        image = self.processor(images=image, return_tensors="pt")[
-            "pixel_values"
-        ]
-        image = image.to(self.model.device)
+    # def preprocess_image(self, image: torch.Tensor):
+    #     if isinstance(image, torch.Tensor):
+    #         if len(image.shape) == 4:
+    #             image = image.unbind(0)
+    #     image = self.processor(images=image, return_tensors="pt")["pixel_values"]
+    #     image = image.to(self.model.device)
 
-        if len(image.shape) != 4:
-            raise ValueError(
-                f"Input shape for class {self.__class__.__name__} in "
-                "method forward_image must be 4, instead it is "
-                f"{len(image.shape)}, for shape {image.shape}"
-            )
-        return image
+    #     if len(image.shape) != 4:
+    #         raise ValueError(
+    #             f"Input shape for class {self.__class__.__name__} in "
+    #             "method forward_image must be 4, instead it is "
+    #             f"{len(image.shape)}, for shape {image.shape}"
+    #         )
+    #     return image
 
-    def preprocess_text(self, text: torch.Tensor) -> torch.Tensor:
-        text = self.processor(
-            text=text, return_tensors="pt", padding=True, truncation=True
-        )["input_ids"]
-        text = text.to(self.model.device)
-        text = text.to(torch.int32)
-        return text
+    # def preprocess_text(self, text: torch.Tensor) -> torch.Tensor:
+    #     text = self.processor(
+    #         text=text, return_tensors="pt", padding=True, truncation=True
+    #     )["input_ids"]
+    #     text = text.to(self.model.device)
+    #     text = text.to(torch.int32)
+    #     return text
 
     def forward_image(self, image: torch.Tensor) -> torch.Tensor:
-        image = self.preprocess_image(image)
+        # image = self.preprocess_image(image)
         clip_output = self.model.forward(pixel_values=image)
 
         image_hidden_token = clip_output.vision_model_output.hidden_states[-1]
 
-        image_output = self.apply_post_processing(
-            name="image", x=image_hidden_token
-        )
+        image_output = self.apply_post_processing(name="image", x=image_hidden_token)
         return image_output
 
     def forward_text(self, text: torch.Tensor) -> torch.Tensor:
-        text = self.preprocess_text(text)
+        # text = self.preprocess_text(text)
         if len(text.shape) == 1:
             text = text.unsqueeze(0)
         clip_output = self.model.forward(input_ids=text)
 
         text_hidden_token = clip_output.vision_model_output.hidden_states[-1]
 
-        text_output = self.apply_post_processing(
-            name="text", x=text_hidden_token
-        )
+        text_output = self.apply_post_processing(name="text", x=text_hidden_token)
         return text_output
 
     def forward(
@@ -421,8 +412,8 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
         images = torch.cat([image.unsqueeze(0), challenge_images], dim=0)
         text = batch.target_text[0]
 
-        challenge_images = self.preprocess_image(images)
-        prompt_text = self.preprocess_text(text)
+        challenge_images = images
+        prompt_text = text
 
         if len(prompt_text.shape) == 1:
             prompt_text = prompt_text.unsqueeze(0)
@@ -437,19 +428,19 @@ class CLIPWithPostProcessingImageTextModel(CLIPImageTextModel):
         image_hidden_token = clip_output.vision_model_output.hidden_states[-1]
         text_hidden_token = clip_output.text_model_output.hidden_states[-1]
 
-        image_output = self.apply_post_processing(
-            name="image", x=image_hidden_token
-        )
-        text_output = self.apply_post_processing(
-            name="text", x=text_hidden_token
-        )
+        image_output = self.apply_post_processing(name="image", x=image_hidden_token)
+        text_output = self.apply_post_processing(name="text", x=text_hidden_token)
 
         if accelerator is not None:
             image_output = accelerator.gather(image_output)
             text_output = accelerator.gather(text_output)
 
+        # normalized features
+        image_output = image_output / image_output.norm(p=2, dim=-1, keepdim=True)
+        text_output = text_output / text_output.norm(p=2, dim=-1, keepdim=True)
+
         similarity = (
-            torch.matmul(text_output, image_output.t()) * self.model.logit_scale
+            torch.matmul(text_output, image_output.t()) * self.model.logit_scale.exp()
         )
 
         loss = contrastive_loss(similarity)
@@ -483,9 +474,7 @@ if __name__ == "__main__":
         collection_paths=["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"],
     )
     model_name_or_path = "openai/clip-vit-large-patch14"
-    model = CLIPImageTextModel(
-        model_name_or_path=model_name_or_path, pretrained=True
-    )
+    model = CLIPImageTextModel(model_name_or_path=model_name_or_path, pretrained=True)
     accelerator = accelerate.Accelerator()
     model.build(batch=dummy_inputs, accelerator=accelerator)
 

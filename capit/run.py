@@ -1,5 +1,6 @@
 import os
 import shutil
+import neptune
 
 import wandb
 from rich import print
@@ -43,7 +44,12 @@ from capit.callbacks import Callback
 from capit.config import BaseConfig, collect_config_store
 from capit.evaluators import ClassificationEvaluator
 from capit.trainers import ClassificationTrainer
-from capit.utils import get_logger, get_rank, pretty_config, set_seed
+from capit.utils import (
+    create_hf_model_repo_and_download_maybe,
+    get_logger,
+    pretty_config,
+    set_seed,
+)
 from omegaconf import OmegaConf
 from torch import nn
 from torch.utils.data import Dataset
@@ -61,250 +67,50 @@ def instantiate_callbacks(callback_dict: dict) -> List[Callback]:
     return callbacks
 
 
-def create_hf_model_repo_and_download_maybe(cfg: BaseConfig):
-    from huggingface_hub import HfApi
-    import orjson
-    import yaml
-
-    if (
-        cfg.download_checkpoint_with_name is not None
-        and cfg.download_latest is True
-    ):
-        raise ValueError(
-            "Cannot use both continue_from_checkpoint_with_name and continue_from_latest"
-        )
-
-    repo_path = cfg.repo_path
-    login(token=os.environ["HF_TOKEN"], add_to_git_credential=True)
-    print(
-        f"Logged in to huggingface with token {os.environ['HF_TOKEN']}, creating repo {repo_path}"
-    )
-    repo_url = create_repo(repo_path, repo_type="model", exist_ok=True)
-
-    # do the below only for rank 0
-    if get_rank() == 0:
-    
-        logger.info(f"Created repo {repo_path}, {cfg.hf_repo_dir}")
-
-        if not pathlib.Path(cfg.hf_repo_dir).exists():
-            pathlib.Path(cfg.hf_repo_dir).mkdir(parents=True, exist_ok=True)
-            pathlib.Path(pathlib.Path(cfg.hf_repo_dir) / "checkpoints").mkdir(
-                parents=True, exist_ok=True
-            )
-
-        config_dict = OmegaConf.to_container(cfg, resolve=True)
-
-        hf_api = HfApi()
-        config_json_path: pathlib.Path = save_json(
-            filepath=pathlib.Path(cfg.hf_repo_dir) / "config.json",
-            dict_to_store=config_dict,
-            overwrite=True,
-        )
-        hf_api.upload_file(
-            repo_id=repo_path,
-            path_or_fileobj=config_json_path.as_posix(),
-            path_in_repo="config.json",
-        )
-
-        config_yaml_path = pathlib.Path(cfg.hf_repo_dir) / "config.yaml"
-        with open(config_yaml_path, "w") as file:
-            documents = yaml.dump(config_dict, file)
-
-        hf_api.upload_file(
-            repo_id=repo_path,
-            path_or_fileobj=config_yaml_path.as_posix(),
-            path_in_repo="config.yaml",
-        )
-
-    try:
-        if cfg.download_checkpoint_with_name is not None:
-            logger.info(
-                f"Download {cfg.download_checkpoint_with_name} checkpoint, if it exists, from the huggingface hub 👨🏻‍💻"
-            )
-
-            ckpt_filepath = hf_hub_download(
-                repo_id=repo_path,
-                cache_dir=pathlib.Path(cfg.hf_repo_dir),
-                resume_download=True,
-                subfolder="checkpoints",
-                filename=cfg.download_checkpoint_with_name,
-                repo_type="model",
-            )
-            if pathlib.Path(
-                pathlib.Path(cfg.hf_repo_dir) / "checkpoints"
-            ).exists():
-                pathlib.Path(
-                    pathlib.Path(cfg.hf_repo_dir) / "checkpoints"
-                ).mkdir(parents=True, exist_ok=True)
-
-            shutil.copy(
-                pathlib.Path(ckpt_filepath),
-                pathlib.Path(cfg.hf_repo_dir)
-                / "checkpoints"
-                / cfg.download_checkpoint_with_name,
-            )
-            logger.info(
-                f"Downloaded checkpoint from huggingface hub to {cfg.hf_repo_dir}"
-            )
-            return (
-                pathlib.Path(cfg.hf_repo_dir)
-                / "checkpoints"
-                / cfg.download_checkpoint_with_name
-            ), repo_url
-
-        elif cfg.download_latest:
-            logger.info(
-                "Download latest checkpoint, if it exists, from the huggingface hub 👨🏻‍💻"
-            )
-
-            optimizer_filepath = hf_hub_download(
-                repo_id=repo_path,
-                cache_dir=pathlib.Path(cfg.hf_repo_dir),
-                resume_download=True,
-                subfolder="checkpoints/latest",
-                filename="optimizer.bin",
-                repo_type="model",
-            )
-
-            model_filepath = hf_hub_download(
-                repo_id=repo_path,
-                cache_dir=pathlib.Path(cfg.hf_repo_dir),
-                resume_download=True,
-                subfolder="checkpoints/latest",
-                filename="pytorch_model.bin",
-                repo_type="model",
-            )
-
-            random_states_filepath = hf_hub_download(
-                repo_id=repo_path,
-                cache_dir=pathlib.Path(cfg.hf_repo_dir),
-                resume_download=True,
-                subfolder="checkpoints/latest",
-                filename="random_states_0.pkl",
-                repo_type="model",
-            )
-
-            trainer_state_filepath = hf_hub_download(
-                repo_id=repo_path,
-                cache_dir=pathlib.Path(cfg.hf_repo_dir),
-                resume_download=True,
-                subfolder="checkpoints/latest",
-                filename="trainer_state.pt",
-                repo_type="model",
-            )
-
-            if not pathlib.Path(
-                pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest"
-            ).exists():
-                pathlib.Path(
-                    pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest"
-                ).mkdir(parents=True, exist_ok=True)
-
-            shutil.copy(
-                pathlib.Path(optimizer_filepath),
-                pathlib.Path(cfg.hf_repo_dir)
-                / "checkpoints"
-                / "latest"
-                / "optimizer.bin",
-            )
-
-            shutil.copy(
-                pathlib.Path(model_filepath),
-                pathlib.Path(cfg.hf_repo_dir)
-                / "checkpoints"
-                / "latest"
-                / "pytorch_model.bin",
-            )
-
-            shutil.copy(
-                pathlib.Path(random_states_filepath),
-                pathlib.Path(cfg.hf_repo_dir)
-                / "checkpoints"
-                / "latest"
-                / "random_states_0.pkl",
-            )
-
-            shutil.copy(
-                pathlib.Path(trainer_state_filepath),
-                pathlib.Path(cfg.hf_repo_dir)
-                / "checkpoints"
-                / "latest"
-                / "trainer_state.pt",
-            )
-
-            logger.info(
-                f"Downloaded checkpoint from huggingface hub to {cfg.hf_repo_dir}"
-            )
-            return (
-                pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest",
-                repo_url,
-            )
-        else:
-            logger.info(
-                "Download all available checkpoints, if they exist, from the huggingface hub 👨🏻‍💻"
-            )
-
-            ckpt_folderpath = snapshot_download(
-                repo_id=repo_path,
-                cache_dir=pathlib.Path(cfg.hf_repo_dir),
-                resume_download=True,
-            )
-            latest_checkpoint = (
-                pathlib.Path(cfg.hf_repo_dir) / "checkpoints" / "latest"
-            )
-
-            if pathlib.Path(
-                pathlib.Path(cfg.hf_repo_dir) / "checkpoints"
-            ).exists():
-                pathlib.Path(
-                    pathlib.Path(cfg.hf_repo_dir) / "checkpoints"
-                ).mkdir(parents=True, exist_ok=True)
-
-            shutil.copy(
-                pathlib.Path(ckpt_folderpath), cfg.hf_repo_dir / "checkpoints"
-            )
-
-            if latest_checkpoint.exists():
-                logger.info(
-                    f"Downloaded checkpoint from huggingface hub to {latest_checkpoint}"
-                )
-            return cfg.hf_repo_dir / "checkpoints" / "latest"
-        return None, repo_url
-
-    except Exception as e:
-        logger.exception(
-            f"Could not download latest checkpoint from huggingface hub: {e}"
-        )
-        return None, repo_url
-
-
-def upload_code_to_wandb(code_dir: Union[pathlib.Path, str]):
-    if isinstance(code_dir, str):
-        code_dir = pathlib.Path(code_dir)
-
-    code = wandb.Artifact("project-source", type="code")
-
-    for path in code_dir.resolve().rglob("*.py"):
-        code.add_file(str(path), name=str(path.relative_to(code_dir)))
-
-    wandb.log_artifact(code)
-
-
 @hydra.main(config_path=None, config_name="config", version_base=None)
 def run(cfg: BaseConfig) -> None:
-    wandb_args = {
-        key: value for key, value in cfg.wandb_args.items() if key != "_target_"
-    }
     ckpt_path, repo_url = create_hf_model_repo_and_download_maybe(cfg)
-    config_dict = OmegaConf.to_container(cfg, resolve=True)
-    wandb_args["config"] = config_dict
-    wandb_args["notes"] = repo_url
-    wandb.init(**wandb_args)  # init wandb and log config
 
-    upload_code_to_wandb(cfg.code_dir)  # log code to wandb
+    if ckpt_path is not None:
+        logger.info(
+            f"ckpt_path: {ckpt_path}, exists: {ckpt_path.exists()}, resume: {cfg.resume}, not resume: {not cfg.resume}"
+        )
+    else:
+        logger.info(
+            f"ckpt_path: {ckpt_path}, resume: {cfg.resume}, not resume: {not cfg.resume}"
+        )
+
+    logger.info(f"Using checkpoint: {ckpt_path}")
+
     print(pretty_config(cfg, resolve=True))
 
     set_seed(seed=cfg.seed)
+
+    if ckpt_path is not None and cfg.resume is True:
+        trainer_state = torch.load(pathlib.Path(ckpt_path) / "trainer_state.pt")
+        global_step = trainer_state["global_step"]
+        neptune_id = (
+            trainer_state["neptune_id"] if "neptune_id" in trainer_state else None
+        )
+        experiment_tracker = neptune.init_run(
+            source_files=["capit/*.py", "kubernetes/*.py"], with_id=neptune_id
+        )
+    else:
+        global_step = 0
+        experiment_tracker = neptune.init_run(
+            source_files=["capit/*.py", "kubernetes/*.py"]
+        )
+
+    wandb.init()
+    config_dict = OmegaConf.to_container(cfg, resolve=True)
+    experiment_tracker["config"] = config_dict
+    experiment_tracker["notes"] = repo_url
+    experiment_tracker["init_global_step"] = global_step
+
+    wandb.config.update(config_dict)
+    wandb.config.update({"notes": repo_url})
+    wandb.config.update({"init_global_step": global_step})
+
     model: nn.Module = instantiate(cfg.model)
     image_transforms = get_image_transforms_instait()
 
@@ -369,11 +175,11 @@ def run(cfg: BaseConfig) -> None:
             ClassificationTrainer(
                 optimizer=optimizer,
                 scheduler=scheduler,
-                experiment_tracker=wandb,
+                experiment_tracker=experiment_tracker,
             )
         ],
-        evaluators=[ClassificationEvaluator(experiment_tracker=wandb)],
-        train_dataloader=train_dataloader,
+        evaluators=[ClassificationEvaluator(experiment_tracker=experiment_tracker)],
+        train_dataloaders=[train_dataloader],
         val_dataloaders=[val_dataloader],
         callbacks=instantiate_callbacks(cfg.callbacks),
         resume=ckpt_path,

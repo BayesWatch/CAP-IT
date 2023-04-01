@@ -34,26 +34,23 @@ class Evaluator(object):
 
 @dataclass
 class EvaluatorOutput:
-    step_idx: int
+    global_step: int
     metrics: Dict
     phase_name: str
 
 
 class ClassificationEvaluator(Evaluator):
-    def __init__(
-        self, experiment_tracker: wandb.wandb_sdk.wandb_run.Run = None
-    ):
+    def __init__(self, experiment_tracker: wandb.wandb_sdk.wandb_run.Run = None):
         super().__init__()
-        self.epoch_metrics = {}
+        self.state_dict = {}
         self.experiment_tracker = experiment_tracker
 
+    @torch.inference_mode()
     def validation_step(
         self,
         model,
         batch,
-        batch_idx,
-        step_idx,
-        epoch_idx,
+        global_step,
         accelerator: accelerate.Accelerator = None,
     ):
         with torch.no_grad():
@@ -65,26 +62,20 @@ class ClassificationEvaluator(Evaluator):
             loss = opt_loss.detach()
 
             for key, value in metrics.items():
-                self.epoch_metrics.setdefault(key, []).append(
-                    value.detach().cpu()
-                )
+                self.state_dict.setdefault(key, []).append(value.detach().cpu())
 
         return EvaluatorOutput(
-            step_idx=step_idx,
+            global_step=global_step,
             phase_name="validation",
-            metrics={
-                "accuracy": metrics["accuracy"],
-                "accuracy_top_5": metrics["accuracy_top_5"],
-                "loss": loss,
-            },
+            metrics={"accuracy": metrics["accuracy"], "loss": loss},
         )
 
+    @torch.inference_mode()
     def test_step(
         self,
         model,
         batch,
-        batch_idx,
-        step_idx,
+        global_step,
         accelerator: accelerate.Accelerator = None,
     ):
         with torch.no_grad():
@@ -96,75 +87,61 @@ class ClassificationEvaluator(Evaluator):
             loss = opt_loss.detach()
 
             for key, value in metrics.items():
-                self.epoch_metrics.setdefault(key, []).append(
-                    value.detach().cpu()
-                )
+                self.state_dict.setdefault(key, []).append(value.detach().cpu())
 
         return EvaluatorOutput(
-            step_idx=step_idx,
+            global_step=global_step,
             phase_name="test",
-            metrics={
-                "accuracy": metrics["accuracy"],
-                "accuracy_top_5": metrics["accuracy_top_5"],
-                "loss": loss,
-            },
+            metrics={"accuracy": metrics["accuracy"], "loss": loss},
         )
 
     @collect_metrics
     def start_validation(
         self,
-        epoch_idx: int,
-        step_idx: int,
-        val_dataloaders: List[DataLoader] = None,
+        global_step: int,
     ):
-        self.epoch_metrics = {}
+        self.state_dict = {}
         return EvaluatorOutput(
-            step_idx=step_idx,
+            global_step=global_step,
             phase_name="validation",
-            metrics=self.epoch_metrics,
+            metrics=self.state_dict,
         )
 
     @collect_metrics
     def start_testing(
         self,
-        epoch_idx: int,
-        step_idx: int,
-        test_dataloaders: List[DataLoader] = None,
+        global_step: int,
     ):
-        self.epoch_metrics = {}
+        self.state_dict = {}
         return EvaluatorOutput(
-            step_idx=step_idx, phase_name="testing", metrics=self.epoch_metrics
+            global_step=global_step, phase_name="testing", metrics=self.state_dict
         )
 
     @collect_metrics
     def end_validation(
         self,
-        epoch_idx: int,
-        step_idx: int,
-        val_dataloaders: List[DataLoader] = None,
+        global_step: int,
     ):
         epoch_metrics = {}
-        for key, value in self.epoch_metrics.items():
+        for key, value in self.state_dict.items():
             epoch_metrics[f"{key}-epoch-mean"] = torch.stack(value).mean()
             epoch_metrics[f"{key}-epoch-std"] = torch.stack(value).std()
             logger.info(f"Validation {key}: {epoch_metrics} {len(value)}")
 
         return EvaluatorOutput(
-            step_idx=step_idx, phase_name="validation", metrics=epoch_metrics
+            global_step=global_step, phase_name="validation", metrics=epoch_metrics
         )
 
     @collect_metrics
     def end_testing(
         self,
-        epoch_idx: int,
-        step_idx: int,
-        test_dataloaders: List[DataLoader] = None,
+        global_step: int,
     ):
         epoch_metrics = {}
-        for key, value in self.epoch_metrics.items():
+        for key, value in self.state_dict.items():
             epoch_metrics[f"{key}-epoch-mean"] = torch.stack(value).mean()
             epoch_metrics[f"{key}-epoch-std"] = torch.stack(value).std()
 
         return EvaluatorOutput(
-            step_idx=step_idx, phase_name="testing", metrics=epoch_metrics
+            global_step=global_step, phase_name="testing", metrics=epoch_metrics
         )

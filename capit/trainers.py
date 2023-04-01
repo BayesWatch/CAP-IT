@@ -32,7 +32,7 @@ class Trainer(object):
 @dataclass
 class TrainerOutput:
     opt_loss: torch.Tensor
-    step_idx: int
+    global_step: int
     metrics: Dict[str, Any]
     phase_name: str
 
@@ -50,7 +50,7 @@ class ClassificationTrainer(Trainer):
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.experiment_tracker = experiment_tracker
-        self.epoch_metrics = {}
+        self.state_dict = {}
 
         if self.scheduler is not None:
             assert scheduler_interval in {"step", "epoch"}
@@ -64,66 +64,58 @@ class ClassificationTrainer(Trainer):
         self,
         model,
         batch,
-        batch_idx,
-        step_idx,
-        epoch_idx,
+        global_step,
         accelerator: Accelerator,
     ) -> TrainerOutput:
         model.train()
         self.optimizer.zero_grad()
-        opt_loss, output_dict = model.forward(
-            batch, accelerator=accelerator, step=True
-        )
+        with torch.cuda.amp.autocast(
+            enabled=True, dtype=torch.bfloat16
+        ) as autocast, torch.backends.cuda.sdp_kernel(enable_flash=False) as disable:
+            opt_loss, output_dict = model.forward(
+                batch, accelerator=accelerator, step=True
+            )
+
         loss = opt_loss.detach()
         accelerator.backward(loss=opt_loss)
-        # for name, param in model.named_parameters():
-        #     if param.grad is None:
-        #         print(name, param.shape)
 
         self.optimizer.step()
 
-        if self.scheduler is not None:
-            if self.scheduler_interval == "step":
-                self.scheduler.step(epoch=step_idx)
-            elif self.scheduler_interval == "epoch" and batch_idx == 0:
-                self.scheduler.step(epoch=epoch_idx)
+        if self.scheduler is not None and self.scheduler_interval == "step":
+            self.scheduler.step(epoch=global_step)
+
         metrics = output_dict["metrics"]
         for key, value in metrics.items():
-            self.epoch_metrics.setdefault(key, []).append(value.detach().cpu())
+            self.state_dict.setdefault(key, []).append(value.detach().cpu())
 
         return TrainerOutput(
             phase_name="training",
             opt_loss=opt_loss,
-            step_idx=step_idx,
+            global_step=global_step,
             metrics={
                 "accuracy": metrics["accuracy"],
-                "accuracy_top_5": metrics["accuracy_top_5"],
                 "loss": loss,
                 "lr": self.optimizer.param_groups[0]["lr"],
             },
         )
 
     @collect_metrics
-    def start_training(
-        self, epoch_idx: int, step_idx: int, train_dataloader: DataLoader = None
-    ):
-        self.epoch_metrics = {}
+    def start_training(self, global_step: int):
+        self.state_dict = {}
         return TrainerOutput(
-            opt_loss=None, step_idx=step_idx, metrics={}, phase_name="training"
+            opt_loss=None, global_step=global_step, metrics={}, phase_name="training"
         )
 
     @collect_metrics
-    def end_training(
-        self, epoch_idx: int, step_idx: int, train_dataloader: DataLoader = None
-    ):
+    def end_training(self, global_step):
         epoch_metrics = {}
-        for key, value in self.epoch_metrics.items():
+        for key, value in self.state_dict.items():
             epoch_metrics[f"{key}-epoch-mean"] = torch.stack(value).mean()
             epoch_metrics[f"{key}-epoch-std"] = torch.stack(value).std()
 
         return TrainerOutput(
             opt_loss=None,
-            step_idx=step_idx,
+            global_step=global_step,
             metrics=epoch_metrics,
             phase_name="training",
         )
