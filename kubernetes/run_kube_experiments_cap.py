@@ -15,7 +15,6 @@ def get_scripts(
     optimizer_lr_list: List[float],
     optimizer_weight_decay_list: List[float],
 ):
-
     script_list = set()
     for model_name in model_name_list:
         for pretrained in pretrained_list:

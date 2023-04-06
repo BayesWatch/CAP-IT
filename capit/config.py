@@ -15,8 +15,8 @@ from capit.core.data.datasets import (
     ChallengeSamplesSourceTypes,
     InstagramImageTextMultiModalDatasePyArrow,
     SplitType,
-    dataclass_collate,
 )
+from capit.core.data.datasets_old import dataclass_collate
 from capit.core.models.baselines import (
     CLIPImageTextModel,
     CLIPWithPostProcessingImageTextModel,
@@ -59,7 +59,6 @@ class DatasetDirectoryConfig:
 ## Top Level config as visible from Hydra-Zen commandline ########################
 @dataclass
 class BaseConfig:
-
     # Must be passed at command line -- neccesary arguments
 
     exp_name: str = MISSING
@@ -118,8 +117,7 @@ def collect_config_store():
     ## Adding named config sets to make it easier to call from command line ########
     config_store = ConfigStore.instance()
     ###################################################################################
-    
-    
+
     dataset_config = InstagramImageTextMultiModalDatasePyArrow.build_config(
         populate_full_signature=True
     )
@@ -130,7 +128,6 @@ def collect_config_store():
         collate_fn=dataclass_collate,
         populate_full_signature=True,
     )
-
 
     ## Experiment tracking and weight upload and download callback configs ############
 
@@ -143,18 +140,18 @@ def collect_config_store():
         save_code=True,
     )
 
-
     @hydrated_dataclass(target=timedelta)
     class TimerConfig:
         seconds: int = 60
         # minutes: int = 60
 
-
     HFModelUploadConfig = builds(
         UploadCheckpointsToHuggingFace, populate_full_signature=True
     )
 
-    hf_upload = HFModelUploadConfig(repo_name=EXPERIMENT_NAME, repo_owner=HF_USERNAME)
+    hf_upload = HFModelUploadConfig(
+        repo_name=EXPERIMENT_NAME, repo_owner=HF_USERNAME
+    )
 
     default_callbacks = dict(hf_uploader=hf_upload)
 
@@ -165,7 +162,6 @@ def collect_config_store():
         zen_partial=True,
     )
 
-
     cosine_learning_rate_scheduler_config = builds(
         CosineLRScheduler,
         populate_full_signature=True,
@@ -174,15 +170,23 @@ def collect_config_store():
 
     accelerator_config = builds(Accelerator, populate_full_signature=True)
 
-    cosine_learning_rate_scheduler_config = cosine_learning_rate_scheduler_config()
+    cosine_learning_rate_scheduler_config = (
+        cosine_learning_rate_scheduler_config()
+    )
 
     ## Model configs ################################################################
 
-    baseline_model_config = CLIPImageTextModel.build_config(populate_full_signature=True)
-    fine_tuning_model_config = CLIPWithPostProcessingImageTextModel.build_config(
+    baseline_model_config = CLIPImageTextModel.build_config(
         populate_full_signature=True
     )
-    cap_model_config = CAPCLIPImageTextModel.build_config(populate_full_signature=True)
+    fine_tuning_model_config = (
+        CLIPWithPostProcessingImageTextModel.build_config(
+            populate_full_signature=True
+        )
+    )
+    cap_model_config = CAPCLIPImageTextModel.build_config(
+        populate_full_signature=True
+    )
 
     ## Trainer/Learner configs ######################################################
     learner_config = builds(Learner, populate_full_signature=True)
@@ -198,7 +202,6 @@ def collect_config_store():
         train_iters=TOTAL_TRAIN_STEPS,
     )
 
-    
     baseline_config = baseline_model_config(
         model_name_or_path="openai/clip-vit-base-patch32",
         pretrained=True,
@@ -216,17 +219,6 @@ def collect_config_store():
         backbone_fine_tunable=False,
     )
 
-    instait_config = dataset_config(
-        dataset_dir=DATASET_DIR,
-        set_name=SplitType.TRAIN,
-        top_k_percent=25,
-        reset_cache=False,
-        num_episodes=100,
-        max_num_collection_images_per_episode=0,
-        max_num_query_images_per_episode=50,
-        challenge_image_source=ChallengeSamplesSourceTypes.WITHIN_USER,
-    )
-
     ###################################################################################
 
     config_store.store(
@@ -242,6 +234,17 @@ def collect_config_store():
     )
 
     config_store.store(group="model", name="cap", node=cap_config)
+
+    instait_config = dataset_config(
+        dataset_dir=DATASET_DIR,
+        set_name=SplitType.TRAIN,
+        top_k_percent=25,
+        reset_cache=False,
+        num_episodes=100,
+        max_num_collection_images_per_episode=0,
+        max_num_query_images_per_episode=50,
+        challenge_image_source=ChallengeSamplesSourceTypes.WITHIN_USER,
+    )
 
     config_store.store(
         group="dataset",
@@ -280,9 +283,13 @@ def collect_config_store():
         node=learner_config,
     )
 
-    config_store.store(group="callbacks", name="default", node=default_callbacks)
+    config_store.store(
+        group="callbacks", name="default", node=default_callbacks
+    )
 
-    config_store.store(group="wandb_args", name="default", node=wandb_args_default)
+    config_store.store(
+        group="wandb_args", name="default", node=wandb_args_default
+    )
 
     config_store.store(
         group="hydra",
@@ -324,7 +331,9 @@ def collect_config_store():
                 root={"handlers": ["rich"], "level": "INFO"},
                 disable_existing_loggers=False,
             ),
-            run={"dir": "${current_experiment_dir}/hydra-run/${now:%Y-%m-%d_%H-%M-%S}"},
+            run={
+                "dir": "${current_experiment_dir}/hydra-run/${now:%Y-%m-%d_%H-%M-%S}"
+            },
             sweep={
                 "dir": "${current_experiment_dir}/hydra-multirun/${now:%Y-%m-%d_%H-%M-%S}",
                 "subdir": "${hydra.job.num}",

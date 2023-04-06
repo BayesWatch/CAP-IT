@@ -40,7 +40,9 @@ class EvaluatorOutput:
 
 
 class ClassificationEvaluator(Evaluator):
-    def __init__(self, experiment_tracker: wandb.wandb_sdk.wandb_run.Run = None):
+    def __init__(
+        self, experiment_tracker: wandb.wandb_sdk.wandb_run.Run = None
+    ):
         super().__init__()
         self.state_dict = {}
         self.experiment_tracker = experiment_tracker
@@ -114,7 +116,9 @@ class ClassificationEvaluator(Evaluator):
     ):
         self.state_dict = {}
         return EvaluatorOutput(
-            global_step=global_step, phase_name="testing", metrics=self.state_dict
+            global_step=global_step,
+            phase_name="testing",
+            metrics=self.state_dict,
         )
 
     @collect_metrics
@@ -129,7 +133,9 @@ class ClassificationEvaluator(Evaluator):
             logger.info(f"Validation {key}: {epoch_metrics} {len(value)}")
 
         return EvaluatorOutput(
-            global_step=global_step, phase_name="validation", metrics=epoch_metrics
+            global_step=global_step,
+            phase_name="validation",
+            metrics=epoch_metrics,
         )
 
     @collect_metrics

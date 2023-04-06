@@ -22,7 +22,6 @@ def check_modality_embedding_shape(
 
 
 def get_normalized_features(inputs, embedding_name, modality_embeddings):
-
     if inputs is not None:
         inputs, _ = modality_embeddings[embedding_name](inputs)
         inputs = inputs / inputs.norm(dim=-1, keepdim=True)

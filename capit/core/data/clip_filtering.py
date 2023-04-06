@@ -30,7 +30,6 @@ logger = get_logger(set_default_handler=True)
 
 
 def collate_batch(batch):
-
     output = defaultdict(list)
     for item in batch:
         for key, value in item.items():

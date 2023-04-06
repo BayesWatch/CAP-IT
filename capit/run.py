@@ -8,8 +8,6 @@ from rich.traceback import install
 
 from capit.core.data.datasets import (
     SplitType,
-    ToThreeChannels,
-    get_image_transforms_instait,
 )
 from capit.core.utils.storage import save_json
 
@@ -90,7 +88,9 @@ def run(cfg: BaseConfig) -> None:
         trainer_state = torch.load(pathlib.Path(ckpt_path) / "trainer_state.pt")
         global_step = trainer_state["global_step"]
         neptune_id = (
-            trainer_state["neptune_id"] if "neptune_id" in trainer_state else None
+            trainer_state["neptune_id"]
+            if "neptune_id" in trainer_state
+            else None
         )
         experiment_tracker = neptune.init_run(
             source_files=["capit/*.py", "kubernetes/*.py"], with_id=neptune_id
@@ -112,25 +112,21 @@ def run(cfg: BaseConfig) -> None:
     wandb.config.update({"init_global_step": global_step})
 
     model: nn.Module = instantiate(cfg.model)
-    image_transforms = get_image_transforms_instait()
 
     train_dataset: Dataset = instantiate(
         cfg.dataset,
         set_name=SplitType.TRAIN,
         num_episodes=cfg.total_train_steps,
-        image_transforms=image_transforms,
     )
     val_dataset: Dataset = instantiate(
         cfg.dataset,
         set_name=SplitType.VAL,
         num_episodes=cfg.total_val_steps,
-        image_transforms=image_transforms,
     )
     test_dataset: Dataset = instantiate(
         cfg.dataset,
         set_name=SplitType.TEST,
         num_episodes=cfg.total_test_steps,
-        image_transforms=image_transforms,
     )
 
     train_dataloader = instantiate(
@@ -178,7 +174,9 @@ def run(cfg: BaseConfig) -> None:
                 experiment_tracker=experiment_tracker,
             )
         ],
-        evaluators=[ClassificationEvaluator(experiment_tracker=experiment_tracker)],
+        evaluators=[
+            ClassificationEvaluator(experiment_tracker=experiment_tracker)
+        ],
         train_dataloaders=[train_dataloader],
         val_dataloaders=[val_dataloader],
         callbacks=instantiate_callbacks(cfg.callbacks),

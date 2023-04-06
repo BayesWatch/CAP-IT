@@ -9,8 +9,6 @@ RUN apt install wget -y
 RUN apt install git -y
 RUN apt-get install git -y
 
-
-
 RUN wget https://repo.anaconda.com/miniconda/Miniconda3-py310_22.11.1-1-Linux-x86_64.sh -O ~/miniconda.sh
 RUN bash ~/miniconda.sh -b -p /opt/conda
 
@@ -47,5 +45,8 @@ RUN echo y | pip install /app/
 
 RUN git config --global credential.helper store
 RUN git config --global --add safe.directory /app/
+
+RUN mkdir /devcode/
+RUN git config --global --add safe.directory /devcode/
 
 ENTRYPOINT ["/bin/bash"]

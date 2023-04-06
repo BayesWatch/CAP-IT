@@ -71,7 +71,9 @@ class ClassificationTrainer(Trainer):
         self.optimizer.zero_grad()
         with torch.cuda.amp.autocast(
             enabled=True, dtype=torch.bfloat16
-        ) as autocast, torch.backends.cuda.sdp_kernel(enable_flash=False) as disable:
+        ) as autocast, torch.backends.cuda.sdp_kernel(
+            enable_flash=False
+        ) as disable:
             opt_loss, output_dict = model.forward(
                 batch, accelerator=accelerator, step=True
             )
@@ -103,7 +105,10 @@ class ClassificationTrainer(Trainer):
     def start_training(self, global_step: int):
         self.state_dict = {}
         return TrainerOutput(
-            opt_loss=None, global_step=global_step, metrics={}, phase_name="training"
+            opt_loss=None,
+            global_step=global_step,
+            metrics={},
+            phase_name="training",
         )
 
     @collect_metrics
